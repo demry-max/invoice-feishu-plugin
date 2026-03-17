@@ -137,12 +137,6 @@ export function renderInvoiceHtml(
     <!-- Footer -->
     <div class="invoice-footer">
       <div class="tax-note">${escapeHtml(config.tax_note)}</div>
-      <div class="bank-info">
-        <div class="bank-info-title">${escapeHtml(config.bank_payment_title)}</div>
-        <div class="bank-info-row"><span>户名:</span> ${escapeHtml(config.bank_account_name)}</div>
-        <div class="bank-info-row"><span>账号:</span> ${escapeHtml(config.bank_account_number)}</div>
-        <div class="bank-info-row"><span>开户银行:</span> ${escapeHtml(config.bank_name)}</div>
-      </div>
     </div>
   </div>
 </body>

@@ -5,6 +5,7 @@ import type {
   GenerateRequest,
   GenerateResponse,
   SourceItem,
+  BankAccount,
 } from "../types";
 
 import { API_BASE_URL } from "../config";
@@ -46,4 +47,8 @@ export async function generateInvoice(
 
 export async function getMockSourceItems(): Promise<SourceItem[]> {
   return request<SourceItem[]>("/api/mock/source-items");
+}
+
+export async function fetchBankAccounts(): Promise<BankAccount[]> {
+  return request<BankAccount[]>("/api/bank-accounts");
 }

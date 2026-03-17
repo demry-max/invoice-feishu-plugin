@@ -9,14 +9,18 @@ import type {
   GenerateRequest,
   GenerateResponse,
   CompanyConfig,
+  BankAccount,
+  TaxMode,
+  BrandTemplateId,
 } from '../types';
 import { buildInvoiceItems, calcSubtotal, calcVat, calcGrandTotal } from '../utils/calculation';
 import { generateInvoiceNo } from '../utils/invoice-no';
-import { mergeCompanyConfig } from '../utils/config';
-import { renderInvoiceHtml } from '../templates/invoice-template';
+import { getCompanyConfigForTemplate } from '../utils/config';
+import { renderByTemplate } from '../templates/template-registry';
+import { findBankAccount, getDefaultBankAccount } from '../utils/bank-accounts';
 import { htmlToPdf } from './pdf-service';
 
-const VAT_RATE = 6;
+const DEFAULT_VAT_RATE = 6;
 const OUTPUT_DIR = path.join(__dirname, '../../output');
 
 // 确保输出目录存在
@@ -24,23 +28,40 @@ if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
-// 内存存储（MVP 阶段，后续替换为数据库或飞书表）
+// 内存存储（MVP 阶段）
 const invoiceStore = new Map<string, Invoice>();
+
+/** 解析银行账户 */
+function resolveBankAccount(bankAccountId?: string): BankAccount {
+  if (bankAccountId) {
+    const found = findBankAccount(bankAccountId);
+    if (found) return found;
+  }
+  return getDefaultBankAccount();
+}
+
+/** 解析税率 - 含税模式下 VAT 为 0 */
+function resolveVatRate(taxMode: TaxMode): number {
+  return taxMode === 'tax_included' ? 0 : DEFAULT_VAT_RATE;
+}
 
 /** 预览账单 - 不落库 */
 export function previewInvoice(req: PreviewRequest): PreviewResponse {
+  const taxMode: TaxMode = req.tax_mode ?? 'tax_excluded';
+  const vatRate = resolveVatRate(taxMode);
   const items = buildInvoiceItems(req.items, 'PREVIEW');
   const subtotal = calcSubtotal(items);
-  const vatAmount = calcVat(subtotal, VAT_RATE);
+  const vatAmount = calcVat(subtotal, vatRate);
   const grandTotal = calcGrandTotal(subtotal, vatAmount);
 
   return {
     items,
     subtotal,
-    vat_rate: VAT_RATE,
+    vat_rate: vatRate,
     vat_amount: vatAmount,
     grand_total: grandTotal,
     currency: req.currency || '¥',
+    tax_mode: taxMode,
   };
 }
 
@@ -49,11 +70,15 @@ export async function generateInvoice(req: GenerateRequest): Promise<GenerateRes
   const invoiceNo = generateInvoiceNo();
   const invoiceDate = req.invoice_date || new Date().toISOString().split('T')[0];
   const currency = req.currency || '¥';
-  const config = mergeCompanyConfig(req.company_config);
+  const taxMode: TaxMode = req.tax_mode ?? 'tax_excluded';
+  const templateId: BrandTemplateId = req.template_id ?? 'feilong';
+  const vatRate = resolveVatRate(taxMode);
+  const config = getCompanyConfigForTemplate(templateId, req.company_config);
+  const bankAccount = resolveBankAccount(req.bank_account_id);
 
   const items = buildInvoiceItems(req.items, invoiceNo);
   const subtotal = calcSubtotal(items);
-  const vatAmount = calcVat(subtotal, VAT_RATE);
+  const vatAmount = calcVat(subtotal, vatRate);
   const grandTotal = calcGrandTotal(subtotal, vatAmount);
 
   const invoice: Invoice = {
@@ -62,22 +87,22 @@ export async function generateInvoice(req: GenerateRequest): Promise<GenerateRes
     bill_to: req.bill_to,
     invoice_date: invoiceDate,
     subtotal,
-    vat_rate: VAT_RATE,
+    vat_rate: vatRate,
     vat_amount: vatAmount,
     grand_total: grandTotal,
     currency,
+    tax_mode: taxMode,
+    template_id: templateId,
     footer_note: config.tax_note,
-    bank_account_name: config.bank_account_name,
-    bank_account_number: config.bank_account_number,
-    bank_name: config.bank_name,
+    bank_account: bankAccount,
     source_record_ids: req.items.map((i) => i.record_id).filter(Boolean) as string[],
     created_at: new Date().toISOString(),
     status: 'generated',
     items,
   };
 
-  // 生成 HTML
-  const html = renderInvoiceHtml(invoice, config);
+  // 生成 HTML（使用模板注册表）
+  const html = renderByTemplate(templateId, invoice, config, bankAccount);
   const htmlFilename = `${invoiceNo}.html`;
   fs.writeFileSync(path.join(OUTPUT_DIR, htmlFilename), html, 'utf-8');
 

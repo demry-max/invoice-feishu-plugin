@@ -1,25 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import type { CompanyConfig } from './types';
-import { useInvoice } from './hooks/useInvoice';
-import { CompanyInfoSection } from './components/CompanyInfoSection';
-import { BillToSection } from './components/BillToSection';
-import { ItemsTable } from './components/ItemsTable';
-import { TotalsSummary } from './components/TotalsSummary';
-import { ResultSection } from './components/ResultSection';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import type { CompanyConfig, BrandTemplateId, TaxMode } from "./types";
+import { useInvoice } from "./hooks/useInvoice";
+import { CompanyInfoSection } from "./components/CompanyInfoSection";
+import { BillToSection } from "./components/BillToSection";
+import { ItemsTable } from "./components/ItemsTable";
+import { TotalsSummary } from "./components/TotalsSummary";
+import { ResultSection } from "./components/ResultSection";
+import { TemplateSelector } from "./components/TemplateSelector";
+import { BankAccountSelector } from "./components/BankAccountSelector";
+import { TaxModeToggle } from "./components/TaxModeToggle";
+import "./App.css";
 
 const DEFAULT_CONFIG: CompanyConfig = {
-  name: 'Feilong Business Service (Shenzhen) Co., Ltd',
-  address_line1: '2308B, Building A, Phase 1,',
-  address_line2: 'Shenzhen Longgang Bantian Xinghe WORLD',
-  email: 'finance@starlight.ph',
-  logo_url: '',
+  name: "Feilong Business Service (Shenzhen) Co., Ltd",
+  address_line1: "2308B, Building A, Phase 1,",
+  address_line2: "Shenzhen Longgang Bantian Xinghe WORLD",
+  email: "finance@starlight.ph",
+  logo_url: "",
   tax_note:
-    '注:上述报价不含税；如需开票，可加收1%费用开具增值税普通发票，或加收3%费用开具增值税专用发票。可开具增值税专用发票。',
-  bank_payment_title: 'Please Deposit Payment to the Following Bank Account',
-  bank_account_name: '菲娱咨询服务（深圳）有限公司',
-  bank_account_number: '641971264',
-  bank_name: '民生银行深圳分行营业部',
+    "注:上述报价不含税；如需开票，可加收1%费用开具增值税普通发票，或加收3%费用开具增值税专用发票。可开具增值税专用发票。",
 };
 
 const App: React.FC = () => {
@@ -35,33 +34,56 @@ const App: React.FC = () => {
     clearResult,
   } = useInvoice();
 
-  const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(DEFAULT_CONFIG);
-  const [billTo, setBillTo] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [currency, setCurrency] = useState('¥');
+  const [companyConfig, setCompanyConfig] =
+    useState<CompanyConfig>(DEFAULT_CONFIG);
+  const [billTo, setBillTo] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [currency, setCurrency] = useState("¥");
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
+  const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
+  const [taxMode, setTaxMode] = useState<TaxMode>("tax_excluded");
+  const [bankAccountId, setBankAccountId] = useState("");
 
   // 从源数据自动填充 bill_to 和 company_name
   useEffect(() => {
     if (sourceItems.length > 0) {
       const first = sourceItems[0];
       if (!billTo && first.bill_to) setBillTo(first.bill_to);
-      if (!companyName && first.company_name) setCompanyName(first.company_name);
+      if (!companyName && first.company_name)
+        setCompanyName(first.company_name);
       if (first.currency) setCurrency(first.currency);
     }
   }, [sourceItems]);
 
   const handlePreview = () => {
-    doPreview(companyConfig, billTo, currency);
+    doPreview(
+      companyConfig,
+      billTo,
+      currency,
+      taxMode,
+      templateId,
+      bankAccountId,
+    );
   };
 
   const handleGenerate = () => {
     if (!billTo.trim()) {
-      alert('请填写 Bill To');
+      alert("请填写 Bill To");
       return;
     }
-    doGenerate(billTo, companyName || companyConfig.name, companyConfig, invoiceDate, currency);
+    doGenerate(
+      billTo,
+      companyName || companyConfig.name,
+      companyConfig,
+      invoiceDate,
+      currency,
+      taxMode,
+      templateId,
+      bankAccountId,
+    );
   };
 
   return (
@@ -77,8 +99,12 @@ const App: React.FC = () => {
       <div className="section">
         <div className="section-header">
           <h3 className="section-title">选中记录 / Selected Records</h3>
-          <button className="btn btn-secondary" onClick={loadSourceItems} disabled={loading}>
-            {loading ? '加载中...' : '加载选中记录'}
+          <button
+            className="btn btn-secondary"
+            onClick={loadSourceItems}
+            disabled={loading}
+          >
+            {loading ? "加载中..." : "加载选中记录"}
           </button>
         </div>
         {sourceItems.length > 0 && (
@@ -100,6 +126,57 @@ const App: React.FC = () => {
             onCurrencyChange={setCurrency}
           />
 
+          {/* 品牌模板 / 含税模式 / 银行账户 */}
+          <div className="section">
+            <h3 className="section-title">账单设置 / Invoice Settings</h3>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              <div>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#666",
+                    marginBottom: "4px",
+                    display: "block",
+                  }}
+                >
+                  品牌模板 / Brand Template
+                </label>
+                <TemplateSelector value={templateId} onChange={setTemplateId} />
+              </div>
+              <div>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#666",
+                    marginBottom: "4px",
+                    display: "block",
+                  }}
+                >
+                  含税模式 / Tax Mode
+                </label>
+                <TaxModeToggle value={taxMode} onChange={setTaxMode} />
+              </div>
+              <div>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#666",
+                    marginBottom: "4px",
+                    display: "block",
+                  }}
+                >
+                  银行账户 / Bank Account
+                </label>
+                <BankAccountSelector
+                  value={bankAccountId}
+                  onChange={setBankAccountId}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* 公司信息（可折叠编辑） */}
           <div className="section">
             <div className="section-header">
@@ -108,7 +185,7 @@ const App: React.FC = () => {
                 className="btn btn-text"
                 onClick={() => setShowCompanyEdit(!showCompanyEdit)}
               >
-                {showCompanyEdit ? '收起' : '编辑'}
+                {showCompanyEdit ? "收起" : "编辑"}
               </button>
             </div>
             {!showCompanyEdit && (
@@ -117,7 +194,10 @@ const App: React.FC = () => {
               </p>
             )}
             {showCompanyEdit && (
-              <CompanyInfoSection config={companyConfig} onChange={setCompanyConfig} />
+              <CompanyInfoSection
+                config={companyConfig}
+                onChange={setCompanyConfig}
+              />
             )}
           </div>
 
@@ -136,15 +216,19 @@ const App: React.FC = () => {
 
           {/* 操作按钮 */}
           <div className="actions">
-            <button className="btn btn-primary" onClick={handlePreview} disabled={loading}>
-              {loading ? '计算中...' : '生成预览'}
+            <button
+              className="btn btn-primary"
+              onClick={handlePreview}
+              disabled={loading}
+            >
+              {loading ? "计算中..." : "生成预览"}
             </button>
             <button
               className="btn btn-danger"
               onClick={handleGenerate}
               disabled={loading || !preview}
             >
-              {loading ? '生成中...' : '生成正式账单'}
+              {loading ? "生成中..." : "生成正式账单"}
             </button>
           </div>
         </>

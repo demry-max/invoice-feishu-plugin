@@ -4,6 +4,8 @@ import type {
   PreviewResponse,
   GenerateResponse,
   CompanyConfig,
+  TaxMode,
+  BrandTemplateId,
 } from "../types";
 import { previewInvoice, generateInvoice } from "../services/api";
 import { createFrontendAdapter } from "../adapters/feishu-adapter";
@@ -42,6 +44,9 @@ export function useInvoice() {
       companyConfig?: Partial<CompanyConfig>,
       billTo?: string,
       currency?: string,
+      taxMode?: TaxMode,
+      templateId?: BrandTemplateId,
+      bankAccountId?: string,
     ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
@@ -51,6 +56,9 @@ export function useInvoice() {
           company_config: companyConfig,
           bill_to: billTo,
           currency,
+          tax_mode: taxMode,
+          template_id: templateId,
+          bank_account_id: bankAccountId,
         });
         setState((s) => ({ ...s, preview: res, loading: false }));
       } catch (err) {
@@ -67,10 +75,21 @@ export function useInvoice() {
       companyConfig?: Partial<CompanyConfig>,
       invoiceDate?: string,
       currency?: string,
+      taxMode?: TaxMode,
+      templateId?: BrandTemplateId,
+      bankAccountId?: string,
     ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
+        console.log("[useInvoice] Generating invoice...", {
+          itemCount: state.sourceItems.length,
+          billTo,
+          companyName,
+          taxMode,
+          templateId,
+          bankAccountId,
+        });
         const res = await generateInvoice({
           items: state.sourceItems,
           bill_to: billTo,
@@ -78,7 +97,13 @@ export function useInvoice() {
           company_config: companyConfig,
           invoice_date: invoiceDate,
           currency,
+          tax_mode: taxMode,
+          template_id: templateId,
+          bank_account_id: bankAccountId,
         });
+        console.log("[useInvoice] Generate result:", JSON.stringify(res));
+        console.log("[useInvoice] html_url:", res.html_url);
+        console.log("[useInvoice] pdf_url:", res.pdf_url);
         setState((s) => ({ ...s, result: res, loading: false }));
 
         // Write back invoice URLs to source records in Bitable

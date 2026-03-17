@@ -2,6 +2,25 @@
 // Shared Types - Used by both frontend and backend
 // ============================================================
 
+/** 品牌模板 ID */
+export type BrandTemplateId = 'feilong' | 'starlight';
+
+/** 含税模式 */
+export type TaxMode = 'tax_excluded' | 'tax_included';
+
+/** 银行账户 */
+export interface BankAccount {
+  id: string;
+  label: string;
+  account_name: string;
+  account_number: string;
+  bank_name: string;
+  bank_address?: string;
+  swift_code?: string;
+  currency_label?: string;
+  payment_title: string;
+}
+
 /** 源项目表记录 */
 export interface SourceItem {
   record_id?: string;
@@ -45,10 +64,10 @@ export interface Invoice {
   vat_amount: number;
   grand_total: number;
   currency: string;
+  tax_mode: TaxMode;
+  template_id: BrandTemplateId;
   footer_note: string;
-  bank_account_name: string;
-  bank_account_number: string;
-  bank_name: string;
+  bank_account: BankAccount;
   html_url?: string;
   pdf_url?: string;
   source_record_ids: string[];
@@ -65,10 +84,6 @@ export interface CompanyConfig {
   email: string;
   logo_url: string;
   tax_note: string;
-  bank_payment_title: string;
-  bank_account_name: string;
-  bank_account_number: string;
-  bank_name: string;
 }
 
 /** 预览请求 */
@@ -77,6 +92,9 @@ export interface PreviewRequest {
   company_config?: Partial<CompanyConfig>;
   bill_to?: string;
   currency?: string;
+  tax_mode?: TaxMode;
+  template_id?: BrandTemplateId;
+  bank_account_id?: string;
 }
 
 /** 预览响应 */
@@ -87,6 +105,7 @@ export interface PreviewResponse {
   vat_amount: number;
   grand_total: number;
   currency: string;
+  tax_mode: TaxMode;
 }
 
 /** 生成账单请求 */
@@ -97,6 +116,9 @@ export interface GenerateRequest {
   company_name: string;
   invoice_date?: string;
   currency?: string;
+  tax_mode?: TaxMode;
+  template_id?: BrandTemplateId;
+  bank_account_id?: string;
 }
 
 /** 生成账单响应 */
