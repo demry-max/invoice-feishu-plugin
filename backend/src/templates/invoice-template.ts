@@ -1,22 +1,40 @@
-import fs from 'fs';
-import path from 'path';
-import type { Invoice, CompanyConfig } from '../types';
+import fs from "fs";
+import path from "path";
+import type { Invoice, CompanyConfig } from "../types";
 
-const cssContent = fs.readFileSync(path.join(__dirname, 'invoice.css'), 'utf-8');
+const cssContent = fs.readFileSync(
+  path.join(__dirname, "invoice.css"),
+  "utf-8",
+);
+
+function loadLogoBase64(): string {
+  const logoPath = path.resolve(__dirname, "../../../logo.png");
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    return `data:image/png;base64,${logoBuffer.toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
+const LOGO_DATA_URI = loadLogoBase64();
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function formatAmount(n: number, currency: string = '¥'): string {
+function formatAmount(n: number, currency: string = "¥"): string {
   return `${currency}${n.toFixed(2)}`;
 }
 
-export function renderInvoiceHtml(invoice: Invoice, config: CompanyConfig): string {
+export function renderInvoiceHtml(
+  invoice: Invoice,
+  config: CompanyConfig,
+): string {
   const itemsHtml = invoice.items
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(
@@ -26,13 +44,13 @@ export function renderInvoiceHtml(invoice: Invoice, config: CompanyConfig): stri
         <td>${escapeHtml(item.service_period)}</td>
         <td class="text-right">${formatAmount(item.price, invoice.currency)}</td>
         <td>${item.qty}</td>
-        <td>${item.discount_percent > 0 ? item.discount_percent + '%' : '-'}</td>
+        <td>${item.discount_percent > 0 ? item.discount_percent + "%" : "-"}</td>
         <td class="text-right">${formatAmount(item.line_total, invoice.currency)}</td>
         <td class="text-left">${escapeHtml(item.chinese_translation)}</td>
         <td class="text-left">${escapeHtml(item.remark)}</td>
-      </tr>`
+      </tr>`,
     )
-    .join('\n');
+    .join("\n");
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -53,9 +71,11 @@ export function renderInvoiceHtml(invoice: Invoice, config: CompanyConfig): stri
         <div class="company-email">${escapeHtml(config.email)}</div>
       </div>
       ${
-        config.logo_url
-          ? `<div class="company-logo"><img src="${escapeHtml(config.logo_url)}" alt="Logo" /></div>`
-          : ''
+        LOGO_DATA_URI
+          ? `<div class="company-logo"><img src="${LOGO_DATA_URI}" alt="Logo" /></div>`
+          : config.logo_url
+            ? `<div class="company-logo"><img src="${escapeHtml(config.logo_url)}" alt="Logo" /></div>`
+            : ""
       }
     </div>
 

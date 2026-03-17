@@ -4,3 +4,6 @@ output/
 *.pdf
 .env
 !.env.example
+.vite/
+frontend-dist.zip
+package-lock.json

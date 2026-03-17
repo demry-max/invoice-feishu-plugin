@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 import type {
   SourceItem,
   PreviewResponse,
   GenerateResponse,
   CompanyConfig,
-} from '../types';
-import { previewInvoice, generateInvoice } from '../services/api';
-import { createFrontendAdapter } from '../adapters/feishu-adapter';
+} from "../types";
+import { previewInvoice, generateInvoice } from "../services/api";
+import { createFrontendAdapter } from "../adapters/feishu-adapter";
 
 const adapter = createFrontendAdapter();
 
@@ -38,7 +38,11 @@ export function useInvoice() {
   }, []);
 
   const doPreview = useCallback(
-    async (companyConfig?: Partial<CompanyConfig>, billTo?: string, currency?: string) => {
+    async (
+      companyConfig?: Partial<CompanyConfig>,
+      billTo?: string,
+      currency?: string,
+    ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -53,7 +57,7 @@ export function useInvoice() {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
       }
     },
-    [state.sourceItems]
+    [state.sourceItems],
   );
 
   const doGenerate = useCallback(
@@ -62,7 +66,7 @@ export function useInvoice() {
       companyName: string,
       companyConfig?: Partial<CompanyConfig>,
       invoiceDate?: string,
-      currency?: string
+      currency?: string,
     ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
@@ -76,11 +80,28 @@ export function useInvoice() {
           currency,
         });
         setState((s) => ({ ...s, result: res, loading: false }));
+
+        // Write back invoice URLs to source records in Bitable
+        const recordIds = state.sourceItems
+          .map((item) => item.record_id)
+          .filter((id): id is string => Boolean(id));
+        if (recordIds.length > 0) {
+          adapter
+            .writeBackInvoiceUrls(
+              recordIds,
+              res.invoice_no,
+              res.html_url,
+              res.pdf_url,
+            )
+            .catch((writeErr) =>
+              console.error("[useInvoice] Write-back failed:", writeErr),
+            );
+        }
       } catch (err) {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
       }
     },
-    [state.sourceItems]
+    [state.sourceItems],
   );
 
   const clearResult = useCallback(() => {
