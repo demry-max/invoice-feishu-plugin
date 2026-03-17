@@ -133,6 +133,7 @@ export function renderByTemplate(
         <div class="company-name">${escapeHtml(config.name)}</div>
         <div class="company-address">${escapeHtml(config.address_line1)}</div>
         <div class="company-address">${escapeHtml(config.address_line2)}</div>
+        ${config.address_line3 ? `<div class="company-address">${escapeHtml(config.address_line3)}</div>` : ""}
         <div class="company-email">${escapeHtml(config.email)}</div>
       </div>
       ${

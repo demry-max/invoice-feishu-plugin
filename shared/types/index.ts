@@ -3,10 +3,10 @@
 // ============================================================
 
 /** 品牌模板 ID */
-export type BrandTemplateId = 'feilong' | 'starlight';
+export type BrandTemplateId = "feilong" | "starlight";
 
 /** 含税模式 */
-export type TaxMode = 'tax_excluded' | 'tax_included';
+export type TaxMode = "tax_excluded" | "tax_included";
 
 /** 银行账户 */
 export interface BankAccount {
@@ -81,6 +81,7 @@ export interface CompanyConfig {
   name: string;
   address_line1: string;
   address_line2: string;
+  address_line3?: string;
   email: string;
   logo_url: string;
   tax_note: string;
