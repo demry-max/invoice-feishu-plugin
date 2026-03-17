@@ -106,22 +106,12 @@ export function useInvoice() {
         console.log("[useInvoice] pdf_url:", res.pdf_url);
         setState((s) => ({ ...s, result: res, loading: false }));
 
-        // Write back invoice URLs to source records in Bitable
-        const recordIds = state.sourceItems
-          .map((item) => item.record_id)
-          .filter((id): id is string => Boolean(id));
-        if (recordIds.length > 0) {
-          adapter
-            .writeBackInvoiceUrls(
-              recordIds,
-              res.invoice_no,
-              res.html_url,
-              res.pdf_url,
-            )
-            .catch((writeErr) =>
-              console.error("[useInvoice] Write-back failed:", writeErr),
-            );
-        }
+        // Write back invoice URLs to main table records in Bitable
+        adapter
+          .writeBackInvoiceUrls(res.invoice_no, res.html_url, res.pdf_url)
+          .catch((writeErr) =>
+            console.error("[useInvoice] Write-back failed:", writeErr),
+          );
       } catch (err) {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
       }

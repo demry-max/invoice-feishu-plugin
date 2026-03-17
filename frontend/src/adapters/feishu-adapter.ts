@@ -16,9 +16,11 @@ import { FEISHU_MODE } from "../config";
 export interface FrontendFeishuAdapter {
   getSelectedRecords(): Promise<SourceItem[]>;
 
+  /** The main table record IDs that were read (for write-back) */
+  getMainRecordIds(): string[];
+
   /** Write invoice URL back to source records in Bitable */
   writeBackInvoiceUrls(
-    recordIds: string[],
     invoiceNo: string,
     htmlUrl: string,
     pdfUrl: string,
@@ -31,19 +33,16 @@ class MockFrontendAdapter implements FrontendFeishuAdapter {
     return getMockSourceItems();
   }
 
+  getMainRecordIds(): string[] {
+    return [];
+  }
+
   async writeBackInvoiceUrls(
-    recordIds: string[],
     invoiceNo: string,
     htmlUrl: string,
     _pdfUrl: string,
   ): Promise<void> {
-    console.log(
-      "[MockFrontend] writeBackInvoiceUrls:",
-      invoiceNo,
-      htmlUrl,
-      "records:",
-      recordIds.length,
-    );
+    console.log("[MockFrontend] writeBackInvoiceUrls:", invoiceNo, htmlUrl);
   }
 }
 
@@ -87,6 +86,13 @@ const SERVICE_TABLE_FIELDS = {
  * 3. 读取每条服务报价记录，组装为 SourceItem[]
  */
 class RealFrontendAdapter implements FrontendFeishuAdapter {
+  /** Stores main table record IDs from last getSelectedRecords call */
+  private _mainRecordIds: string[] = [];
+
+  getMainRecordIds(): string[] {
+    return [...this._mainRecordIds];
+  }
+
   private async getBitable() {
     const { bitable } = await import("@lark-opdev/block-bitable-api");
     return bitable;
@@ -122,6 +128,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const ids = await table.getRecordIdList();
       mainRecordIds = ids.filter((id): id is string => id != null);
     }
+
+    // Store main record IDs for write-back
+    this._mainRecordIds = mainRecordIds;
 
     // Find the linked service field
     const linkedServiceFieldId = mainFieldIdByName.get(
@@ -305,56 +314,82 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
   }
 
   async writeBackInvoiceUrls(
-    recordIds: string[],
     invoiceNo: string,
     htmlUrl: string,
     pdfUrl: string,
   ): Promise<void> {
     const { table } = await this.getMainTable();
 
+    // Use stored main record IDs (from getSelectedRecords)
+    const recordIds = this._mainRecordIds;
+    if (recordIds.length === 0) {
+      console.warn("[RealFrontend] No main record IDs stored for write-back");
+      return;
+    }
+
     // Get field meta to find write-back fields
     const fieldMetaList = await table.getFieldMetaList();
     const fieldByName = new Map(fieldMetaList.map((f) => [f.name, f.id]));
 
-    // Try Chinese and English field names for write-back
+    console.log(
+      "[RealFrontend] Write-back: available fields:",
+      JSON.stringify(fieldMetaList.map((f) => f.name)),
+    );
+
+    // Try Chinese field names for write-back
     const invoiceIdFieldId =
       fieldByName.get("账单编号") ??
-      fieldByName.get(MAIN_TABLE_FIELDS.INVOICE_ID) ??
-      fieldByName.get("invoice_no");
+      fieldByName.get(MAIN_TABLE_FIELDS.INVOICE_ID);
     const htmlUrlFieldId =
       fieldByName.get("HTML链接") ?? fieldByName.get("html_url");
     const pdfUrlFieldId =
       fieldByName.get("PDF链接") ?? fieldByName.get("pdf_url");
 
+    console.log("[RealFrontend] Write-back field IDs:", {
+      invoiceId: invoiceIdFieldId,
+      htmlUrl: htmlUrlFieldId,
+      pdfUrl: pdfUrlFieldId,
+    });
+
     if (!invoiceIdFieldId && !htmlUrlFieldId && !pdfUrlFieldId) {
       console.warn(
-        "[RealFrontend] No write-back fields found (账单ID, html_url, pdf_url). Skipping.",
+        "[RealFrontend] No write-back fields found (账单编号, HTML链接, PDF链接). Skipping.",
       );
       return;
     }
 
     for (const recordId of recordIds) {
-      const fields: Record<string, unknown> = {};
+      try {
+        const fields: Record<string, unknown> = {};
 
-      if (invoiceIdFieldId) {
-        fields[invoiceIdFieldId] = invoiceNo;
-      }
-      if (htmlUrlFieldId) {
-        fields[htmlUrlFieldId] = htmlUrl;
-      }
-      if (pdfUrlFieldId) {
-        fields[pdfUrlFieldId] = pdfUrl;
-      }
+        if (invoiceIdFieldId) {
+          fields[invoiceIdFieldId] = invoiceNo;
+        }
+        if (htmlUrlFieldId) {
+          fields[htmlUrlFieldId] = htmlUrl;
+        }
+        if (pdfUrlFieldId) {
+          fields[pdfUrlFieldId] = pdfUrl;
+        }
 
-      await table.setRecord(recordId, { fields });
+        console.log("[RealFrontend] Writing to record:", recordId, fields);
+        await table.setRecord(recordId, { fields });
+        console.log("[RealFrontend] Write-back success for:", recordId);
+      } catch (err) {
+        console.error(
+          "[RealFrontend] Write-back failed for record:",
+          recordId,
+          err,
+        );
+      }
     }
 
     console.log(
-      "[RealFrontend] writeBackInvoiceUrls:",
+      "[RealFrontend] writeBackInvoiceUrls complete:",
       invoiceNo,
       "updated",
       recordIds.length,
-      "records",
+      "main records",
     );
   }
 }
