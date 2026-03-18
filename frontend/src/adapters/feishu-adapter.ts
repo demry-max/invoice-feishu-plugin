@@ -50,7 +50,9 @@ class MockFrontendAdapter implements FrontendFeishuAdapter {
 // 工单主表 field name constants
 // ============================================================
 const MAIN_TABLE_FIELDS = {
-  /** 客户名称 / Bill To — 联系人姓名 */
+  /** 公司名称 — 优先用于 BILL TO */
+  COMPANY_NAME: "公司名称",
+  /** 联系人姓名 — 公司名称为空时用于 BILL TO */
   CUSTOMER_NAME: "联系人姓名",
   /** 客户微信名称 (fallback for bill_to) */
   WECHAT_NAME: "客户微信名称",
@@ -194,10 +196,17 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const mainRecord = await table.getRecordById(mainRecordId);
       const mainFields = extractFields(mainRecord.fields, mainFieldNameById);
 
-      // Extract customer info from main record
-      const customerName =
-        String(mainFields[MAIN_TABLE_FIELDS.CUSTOMER_NAME] ?? "") ||
-        String(mainFields[MAIN_TABLE_FIELDS.WECHAT_NAME] ?? "");
+      // Extract customer info: 优先公司名称，其次联系人姓名，最后微信名称
+      const companyNameVal = String(
+        mainFields[MAIN_TABLE_FIELDS.COMPANY_NAME] ?? "",
+      ).trim();
+      const contactName = String(
+        mainFields[MAIN_TABLE_FIELDS.CUSTOMER_NAME] ?? "",
+      ).trim();
+      const wechatName = String(
+        mainFields[MAIN_TABLE_FIELDS.WECHAT_NAME] ?? "",
+      ).trim();
+      const customerName = companyNameVal || contactName || wechatName;
 
       console.log(
         "[RealFrontend] 工单主表 record:",
@@ -280,19 +289,23 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const record = await table.getRecordById(id);
       const fields = extractFields(record.fields, fieldNameById);
 
+      const fallbackCompany = String(
+        fields[MAIN_TABLE_FIELDS.COMPANY_NAME] ?? "",
+      ).trim();
+      const fallbackContact = String(
+        fields[MAIN_TABLE_FIELDS.CUSTOMER_NAME] ?? "",
+      ).trim();
+      const fallbackWechat = String(
+        fields[MAIN_TABLE_FIELDS.WECHAT_NAME] ?? "",
+      ).trim();
+      const fallbackBillTo =
+        fallbackCompany || fallbackContact || fallbackWechat;
+
       items.push({
         record_id: id,
-        bill_to: String(
-          fields[MAIN_TABLE_FIELDS.CUSTOMER_NAME] ??
-            fields[MAIN_TABLE_FIELDS.WECHAT_NAME] ??
-            "",
-        ),
-        company_name: "",
-        customer_name: String(
-          fields[MAIN_TABLE_FIELDS.CUSTOMER_NAME] ??
-            fields[MAIN_TABLE_FIELDS.WECHAT_NAME] ??
-            "",
-        ),
+        bill_to: fallbackBillTo,
+        company_name: fallbackCompany,
+        customer_name: fallbackContact || fallbackWechat,
         service: String(fields[SERVICE_TABLE_FIELDS.SERVICE] ?? ""),
         service_period: String(
           fields[SERVICE_TABLE_FIELDS.SERVICE_PERIOD] ?? "",
