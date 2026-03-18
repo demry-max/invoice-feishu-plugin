@@ -11,14 +11,24 @@ import { BankAccountSelector } from "./components/BankAccountSelector";
 import { TaxModeToggle } from "./components/TaxModeToggle";
 import "./App.css";
 
-const DEFAULT_CONFIG: CompanyConfig = {
-  name: "Feilong Business Service (Shenzhen) Co., Ltd",
-  address_line1: "2308B, Building A, Phase 1,",
-  address_line2: "Shenzhen Longgang Bantian Xinghe WORLD",
-  email: "finance@starlight.ph",
-  logo_url: "",
-  tax_note:
-    "注:上述报价不含税；如需开票，可加收1%费用开具增值税普通发票，或加收3%费用开具增值税专用发票。可开具增值税专用发票。",
+const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
+  feilong: {
+    name: "Feilong Business Service (Shenzhen) Co., Ltd",
+    address_line1: "2308B, Building A, Phase 1,",
+    address_line2: "Shenzhen Longgang Bantian Xinghe WORLD",
+    email: "finance@starlight.ph",
+    logo_url: "",
+    tax_note: "",
+  },
+  starlight: {
+    name: "Starlight Business Consulting Services Inc.",
+    address_line1: "Salustiana D. Ty Tower, Paseo De Roxas,",
+    address_line2: "Legazpi Village, Makati City",
+    address_line3: "Makati City, PH 1229",
+    email: "finance@starlight.ph",
+    logo_url: "",
+    tax_note: "",
+  },
 };
 
 const App: React.FC = () => {
@@ -34,8 +44,9 @@ const App: React.FC = () => {
     clearResult,
   } = useInvoice();
 
-  const [companyConfig, setCompanyConfig] =
-    useState<CompanyConfig>(DEFAULT_CONFIG);
+  const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(
+    COMPANY_CONFIGS.feilong,
+  );
   const [billTo, setBillTo] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(
@@ -44,8 +55,14 @@ const App: React.FC = () => {
   const [currency, setCurrency] = useState("¥");
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
   const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
-  const [taxMode, setTaxMode] = useState<TaxMode>("tax_excluded");
+  const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
   const [bankAccountId, setBankAccountId] = useState("");
+
+  // 切换模板时更新公司信息
+  useEffect(() => {
+    const newConfig = COMPANY_CONFIGS[templateId] ?? COMPANY_CONFIGS.feilong;
+    setCompanyConfig(newConfig);
+  }, [templateId]);
 
   // 从源数据自动填充 bill_to 和 company_name
   useEffect(() => {

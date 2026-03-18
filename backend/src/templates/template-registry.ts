@@ -5,6 +5,7 @@ import type {
   CompanyConfig,
   BankAccount,
   BrandTemplateId,
+  TaxMode,
 } from "../types";
 
 // ============================================================
@@ -75,6 +76,18 @@ function escapeHtml(str: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Notes 文本根据含税模式动态生成
+ * 用户选择"不含税"→ tax_included → 不含税 note
+ * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
+ */
+function getTaxNote(taxMode: TaxMode): string {
+  if (taxMode === "tax_excluded") {
+    return "上述报价含税,可开具增值税专用发票。";
+  }
+  return "注:上述报价不含税;如需开票,可加收1%费用开具增值税普通发票,或加收3%费用开具增值税专用发票。";
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {
@@ -188,7 +201,7 @@ export function renderByTemplate(
     <!-- Footer -->
     <div class="invoice-footer">
       <div class="notes-label">Notes:</div>
-      <div class="tax-note">${escapeHtml(config.tax_note || config.name)}</div>
+      <div class="tax-note">${escapeHtml(getTaxNote(invoice.tax_mode))}</div>
       ${bankHtml}
     </div>
   </div>
