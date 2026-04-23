@@ -83,7 +83,13 @@ function pickCurrencySymbol(
 }
 
 export function previewInvoice(req: PreviewRequest): PreviewResponse {
-  const taxMode: TaxMode = req.tax_mode ?? "tax_excluded";
+  // Derive tax mode from invoice type: final_payment shows a single amount
+  // (tax_included); consultant shows price + VAT separately (tax_excluded).
+  const invoiceTypeDerivedMode: TaxMode =
+    (req.invoice_type ?? "consultant") === "final_payment"
+      ? "tax_included"
+      : "tax_excluded";
+  const taxMode: TaxMode = req.tax_mode ?? invoiceTypeDerivedMode;
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const exchangeRate =
     typeof req.exchange_rate === "number" && req.exchange_rate > 0
@@ -155,7 +161,13 @@ export async function generateInvoice(
   const invoiceNo = generateInvoiceNo();
   const invoiceDate =
     req.invoice_date || new Date().toISOString().split("T")[0];
-  const taxMode: TaxMode = req.tax_mode ?? "tax_excluded";
+  // Derive tax mode from invoice type: final_payment shows a single amount
+  // (tax_included); consultant shows price + VAT separately (tax_excluded).
+  const invoiceTypeDerivedMode: TaxMode =
+    (req.invoice_type ?? "consultant") === "final_payment"
+      ? "tax_included"
+      : "tax_excluded";
+  const taxMode: TaxMode = req.tax_mode ?? invoiceTypeDerivedMode;
   const templateId: BrandTemplateId = req.template_id ?? "feilong";
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const exchangeRate =
