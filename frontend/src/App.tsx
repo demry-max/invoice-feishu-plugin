@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import type {
   CompanyConfig,
   BrandTemplateId,
-  TaxMode,
   InvoiceType,
   VatRatePercent,
   DisplayCurrency,
@@ -16,7 +15,6 @@ import { TotalsSummary } from "./components/TotalsSummary";
 import { ResultSection } from "./components/ResultSection";
 import { TemplateSelector } from "./components/TemplateSelector";
 import { BankAccountSelector } from "./components/BankAccountSelector";
-import { TaxModeToggle } from "./components/TaxModeToggle";
 import "./App.css";
 
 const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
@@ -110,7 +108,6 @@ const App: React.FC = () => {
   const [currency, setCurrency] = useState("¥");
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
   const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
-  const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
   const [bankAccountId, setBankAccountId] = useState("");
 
   // New: invoice type + tax rate + display currency
@@ -168,7 +165,7 @@ const App: React.FC = () => {
       companyConfig,
       billTo,
       currency,
-      taxMode,
+      undefined, // tax_mode retired — derived from invoice_type on the server
       templateId,
       bankAccountId,
       previewOpts,
@@ -186,7 +183,7 @@ const App: React.FC = () => {
       companyConfig,
       invoiceDate,
       currency,
-      taxMode,
+      undefined, // tax_mode retired — derived from invoice_type on the server
       templateId,
       bankAccountId,
       previewOpts,
@@ -293,19 +290,6 @@ const App: React.FC = () => {
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "12px",
-                        color: "#666",
-                        marginBottom: "4px",
-                        display: "block",
-                      }}
-                    >
-                      含税模式 / Tax Mode
-                    </label>
-                    <TaxModeToggle value={taxMode} onChange={setTaxMode} />
                   </div>
                 </>
               )}
