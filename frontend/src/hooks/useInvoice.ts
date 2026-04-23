@@ -16,6 +16,11 @@ import { createFrontendAdapter } from "../adapters/feishu-adapter";
 
 const adapter = createFrontendAdapter();
 
+/** Subscribe to Bitable selection changes from components. */
+export function subscribeSelectionChange(cb: () => void): () => void {
+  return adapter.onSelectionChange(cb);
+}
+
 export interface UseInvoiceState {
   sourceItems: SourceItem[];
   preview: PreviewResponse | null;
