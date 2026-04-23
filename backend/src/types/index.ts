@@ -2,6 +2,9 @@
 export type {
   BrandTemplateId,
   TaxMode,
+  InvoiceType,
+  VatRatePercent,
+  DisplayCurrency,
   BankAccount,
   SourceItem,
   InvoiceItem,
@@ -12,4 +15,5 @@ export type {
   GenerateRequest,
   GenerateResponse,
   ApiResponse,
-} from '../../../shared/types';
+  ExchangeRateRow,
+} from "../../../shared/types";

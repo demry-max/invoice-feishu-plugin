@@ -8,6 +8,15 @@ export type BrandTemplateId = "feilong" | "starlight";
 /** 含税模式 */
 export type TaxMode = "tax_excluded" | "tax_included";
 
+/** 账单类型 */
+export type InvoiceType = "consultant" | "final_payment";
+
+/** 支持的展示币种 */
+export type DisplayCurrency = "CNY" | "USD" | "PHP";
+
+/** 支持的 VAT 比例（顾问账单可选） */
+export type VatRatePercent = 1 | 3 | 6 | 12;
+
 /** 银行账户 */
 export interface BankAccount {
   id: string;
@@ -37,6 +46,25 @@ export interface SourceItem {
   remark: string;
   currency?: string;
   status?: string;
+  // Consultant invoice (顾问账单): VAT/EWT only applied when true
+  tax_eligible?: boolean;
+  // Final-payment invoice (尾款账单): actual amount billed by PH finance
+  actual_amount_incurred?: number;
+  // Final-payment invoice: running amount already paid per line
+  amount_paid?: number;
+  // Main-record context (same for every line in one invoice)
+  amount_refunded?: number;
+  total_deduction_amount?: number;
+  // Source record's bill currency (e.g., "CNY", "USD", "PHP")
+  source_currency?: string;
+}
+
+/** 汇率表行：按账单生成日期查询 */
+export interface ExchangeRateRow {
+  effective_date: string; // YYYY-MM-DD
+  from_currency: string;
+  to_currency: string;
+  rate: number;
 }
 
 /** 账单明细 */
@@ -51,6 +79,9 @@ export interface InvoiceItem {
   chinese_translation: string;
   remark: string;
   sort_order: number;
+  tax_eligible?: boolean;
+  actual_amount_incurred?: number;
+  amount_paid?: number;
 }
 
 /** 账单主表 */
@@ -74,6 +105,16 @@ export interface Invoice {
   created_at: string;
   status: string;
   items: InvoiceItem[];
+  // New fields for the two invoice types
+  invoice_type?: InvoiceType;
+  taxable_subtotal?: number;
+  ewt_rate?: number;
+  ewt_amount?: number;
+  amount_paid_total?: number;
+  amount_refunded?: number;
+  total_deduction_amount?: number;
+  exchange_rate?: number;
+  display_currency?: string;
 }
 
 /** 公司信息配置 */
@@ -96,6 +137,11 @@ export interface PreviewRequest {
   tax_mode?: TaxMode;
   template_id?: BrandTemplateId;
   bank_account_id?: string;
+  invoice_type?: InvoiceType;
+  vat_rate_percent?: VatRatePercent;
+  display_currency?: DisplayCurrency;
+  exchange_rate?: number;
+  invoice_date?: string;
 }
 
 /** 预览响应 */
@@ -107,6 +153,15 @@ export interface PreviewResponse {
   grand_total: number;
   currency: string;
   tax_mode: TaxMode;
+  invoice_type?: InvoiceType;
+  taxable_subtotal?: number;
+  ewt_rate?: number;
+  ewt_amount?: number;
+  amount_paid_total?: number;
+  amount_refunded?: number;
+  total_deduction_amount?: number;
+  exchange_rate?: number;
+  display_currency?: string;
 }
 
 /** 生成账单请求 */
@@ -120,6 +175,10 @@ export interface GenerateRequest {
   tax_mode?: TaxMode;
   template_id?: BrandTemplateId;
   bank_account_id?: string;
+  invoice_type?: InvoiceType;
+  vat_rate_percent?: VatRatePercent;
+  display_currency?: DisplayCurrency;
+  exchange_rate?: number;
 }
 
 /** 生成账单响应 */

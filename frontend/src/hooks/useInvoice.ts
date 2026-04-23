@@ -6,6 +6,10 @@ import type {
   CompanyConfig,
   TaxMode,
   BrandTemplateId,
+  InvoiceType,
+  VatRatePercent,
+  DisplayCurrency,
+  ExchangeRateRow,
 } from "../types";
 import { previewInvoice, generateInvoice } from "../services/api";
 import { createFrontendAdapter } from "../adapters/feishu-adapter";
@@ -18,6 +22,15 @@ export interface UseInvoiceState {
   result: GenerateResponse | null;
   loading: boolean;
   error: string | null;
+  exchangeRates: ExchangeRateRow[];
+}
+
+export interface PreviewOptions {
+  invoiceType?: InvoiceType;
+  vatRatePercent?: VatRatePercent;
+  displayCurrency?: DisplayCurrency;
+  exchangeRate?: number;
+  invoiceDate?: string;
 }
 
 export function useInvoice() {
@@ -27,13 +40,25 @@ export function useInvoice() {
     result: null,
     loading: false,
     error: null,
+    exchangeRates: [],
   });
 
   const loadSourceItems = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const items = await adapter.getSelectedRecords();
-      setState((s) => ({ ...s, sourceItems: items, loading: false }));
+      const [items, rates] = await Promise.all([
+        adapter.getSelectedRecords(),
+        adapter.getExchangeRates().catch((err) => {
+          console.warn("[useInvoice] getExchangeRates failed:", err);
+          return [] as ExchangeRateRow[];
+        }),
+      ]);
+      setState((s) => ({
+        ...s,
+        sourceItems: items,
+        exchangeRates: rates,
+        loading: false,
+      }));
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: String(err) }));
     }
@@ -47,6 +72,7 @@ export function useInvoice() {
       taxMode?: TaxMode,
       templateId?: BrandTemplateId,
       bankAccountId?: string,
+      opts?: PreviewOptions,
     ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
@@ -59,6 +85,11 @@ export function useInvoice() {
           tax_mode: taxMode,
           template_id: templateId,
           bank_account_id: bankAccountId,
+          invoice_type: opts?.invoiceType,
+          vat_rate_percent: opts?.vatRatePercent,
+          display_currency: opts?.displayCurrency,
+          exchange_rate: opts?.exchangeRate,
+          invoice_date: opts?.invoiceDate,
         });
         setState((s) => ({ ...s, preview: res, loading: false }));
       } catch (err) {
@@ -78,18 +109,11 @@ export function useInvoice() {
       taxMode?: TaxMode,
       templateId?: BrandTemplateId,
       bankAccountId?: string,
+      opts?: PreviewOptions,
     ) => {
       if (state.sourceItems.length === 0) return;
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
-        console.log("[useInvoice] Generating invoice...", {
-          itemCount: state.sourceItems.length,
-          billTo,
-          companyName,
-          taxMode,
-          templateId,
-          bankAccountId,
-        });
         const res = await generateInvoice({
           items: state.sourceItems,
           bill_to: billTo,
@@ -100,13 +124,13 @@ export function useInvoice() {
           tax_mode: taxMode,
           template_id: templateId,
           bank_account_id: bankAccountId,
+          invoice_type: opts?.invoiceType,
+          vat_rate_percent: opts?.vatRatePercent,
+          display_currency: opts?.displayCurrency,
+          exchange_rate: opts?.exchangeRate,
         });
-        console.log("[useInvoice] Generate result:", JSON.stringify(res));
-        console.log("[useInvoice] html_url:", res.html_url);
-        console.log("[useInvoice] pdf_url:", res.pdf_url);
         setState((s) => ({ ...s, result: res, loading: false }));
 
-        // Write back invoice URLs to main table records in Bitable
         adapter
           .writeBackInvoiceUrls(res.invoice_no, res.html_url, res.pdf_url)
           .catch((writeErr) =>
