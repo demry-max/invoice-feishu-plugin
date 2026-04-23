@@ -215,8 +215,93 @@ export function renderByTemplate(
 function buildTotalsHtml(invoice: Invoice): string {
   const c = invoice.currency;
 
+  if (invoice.invoice_type === "final_payment") {
+    const rows: string[] = [];
+    rows.push(`
+        <tr>
+          <td class="label">Actual Amount (Subtotal)</td>
+          <td class="value">${formatAmount(invoice.subtotal, c)}</td>
+        </tr>`);
+    if (typeof invoice.amount_paid_total === "number") {
+      rows.push(`
+        <tr>
+          <td class="label">Less: Amount Paid</td>
+          <td class="value">−${formatAmount(invoice.amount_paid_total, c)}</td>
+        </tr>`);
+    }
+    if (typeof invoice.total_deduction_amount === "number") {
+      rows.push(`
+        <tr>
+          <td class="label">Less: Total Deduction</td>
+          <td class="value">−${formatAmount(invoice.total_deduction_amount, c)}</td>
+        </tr>`);
+    }
+    if (typeof invoice.amount_refunded === "number") {
+      rows.push(`
+        <tr>
+          <td class="label">Add: Amount Refunded</td>
+          <td class="value">+${formatAmount(invoice.amount_refunded, c)}</td>
+        </tr>`);
+    }
+    rows.push(`
+        <tr class="grand-total">
+          <td class="label">Grand Total (Final Payment)</td>
+          <td class="value">${formatAmount(invoice.grand_total, c)}</td>
+        </tr>`);
+    return `
+    <div class="totals-section">
+      <table class="totals-table">
+        ${rows.join("\n")}
+      </table>
+    </div>`;
+  }
+
+  if (invoice.invoice_type === "consultant") {
+    const rows: string[] = [];
+    rows.push(`
+        <tr>
+          <td class="label">Total (Subtotal)</td>
+          <td class="value">${formatAmount(invoice.subtotal, c)}</td>
+        </tr>`);
+    if (
+      typeof invoice.taxable_subtotal === "number" &&
+      invoice.taxable_subtotal !== invoice.subtotal
+    ) {
+      rows.push(`
+        <tr class="muted">
+          <td class="label">Taxable Subtotal</td>
+          <td class="value">${formatAmount(invoice.taxable_subtotal, c)}</td>
+        </tr>`);
+    }
+    if (invoice.vat_rate > 0) {
+      rows.push(`
+        <tr>
+          <td class="label">ADD: VAT(${invoice.vat_rate}%)</td>
+          <td class="value">+${formatAmount(invoice.vat_amount, c)}</td>
+        </tr>`);
+    }
+    if ((invoice.ewt_amount ?? 0) > 0) {
+      rows.push(`
+        <tr>
+          <td class="label">Less: EWT(${invoice.ewt_rate ?? 2}%)</td>
+          <td class="value">−${formatAmount(invoice.ewt_amount ?? 0, c)}</td>
+        </tr>`);
+    }
+    rows.push(`
+        <tr class="grand-total">
+          <td class="label">Grand Total</td>
+          <td class="value">${formatAmount(invoice.grand_total, c)}</td>
+        </tr>`);
+    return `
+    <div class="totals-section">
+      <table class="totals-table">
+        ${rows.join("\n")}
+      </table>
+    </div>`;
+  }
+
+  // Legacy fallback (tax_mode-based)
   if (invoice.tax_mode === "tax_included") {
-    // 含税模式: Grand Total 就是行合计之和，VAT 是包含在内的
     return `
     <div class="totals-section">
       <table class="totals-table">
@@ -228,7 +313,6 @@ function buildTotalsHtml(invoice: Invoice): string {
     </div>`;
   }
 
-  // 不含税模式 (default): Total + VAT = Grand Total
   return `
     <div class="totals-section">
       <table class="totals-table">

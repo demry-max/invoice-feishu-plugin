@@ -1,5 +1,13 @@
-import React, { useState, useEffect } from "react";
-import type { CompanyConfig, BrandTemplateId, TaxMode } from "./types";
+import React, { useState, useEffect, useMemo } from "react";
+import type {
+  CompanyConfig,
+  BrandTemplateId,
+  TaxMode,
+  InvoiceType,
+  VatRatePercent,
+  DisplayCurrency,
+  ExchangeRateRow,
+} from "./types";
 import { useInvoice } from "./hooks/useInvoice";
 import { CompanyInfoSection } from "./components/CompanyInfoSection";
 import { BillToSection } from "./components/BillToSection";
@@ -31,6 +39,52 @@ const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
   },
 };
 
+const VAT_OPTIONS: VatRatePercent[] = [1, 3, 6, 12];
+const CURRENCY_OPTIONS: DisplayCurrency[] = ["CNY", "USD", "PHP"];
+
+/**
+ * Look up an exchange rate for (from → to) effective on or before `date`.
+ * Returns 1 when from === to, or when no matching row is found.
+ */
+function findExchangeRate(
+  rows: ExchangeRateRow[],
+  from: string,
+  to: string,
+  date: string,
+): number {
+  if (!from || !to) return 1;
+  const F = from.trim().toUpperCase();
+  const T = to.trim().toUpperCase();
+  if (F === T) return 1;
+
+  const matches = rows
+    .filter(
+      (r) =>
+        r.from_currency.toUpperCase() === F &&
+        r.to_currency.toUpperCase() === T &&
+        r.effective_date <= date,
+    )
+    .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+
+  if (matches.length > 0) return matches[0].rate;
+
+  // Try reciprocal
+  const reciprocal = rows
+    .filter(
+      (r) =>
+        r.from_currency.toUpperCase() === T &&
+        r.to_currency.toUpperCase() === F &&
+        r.effective_date <= date,
+    )
+    .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+
+  if (reciprocal.length > 0 && reciprocal[0].rate > 0) {
+    return 1 / reciprocal[0].rate;
+  }
+
+  return 1;
+}
+
 const App: React.FC = () => {
   const {
     sourceItems,
@@ -38,6 +92,7 @@ const App: React.FC = () => {
     result,
     loading,
     error,
+    exchangeRates,
     loadSourceItems,
     doPreview,
     doGenerate,
@@ -58,13 +113,35 @@ const App: React.FC = () => {
   const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
   const [bankAccountId, setBankAccountId] = useState("");
 
-  // 切换模板时更新公司信息
+  // New: invoice type + tax rate + display currency
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>("consultant");
+  const [vatRatePercent, setVatRatePercent] = useState<VatRatePercent>(6);
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency | "">(
+    "",
+  );
+
+  // Source currency from main record (first item)
+  const sourceCurrency = useMemo(
+    () => sourceItems[0]?.source_currency?.toUpperCase() || "",
+    [sourceItems],
+  );
+
+  // Computed exchange rate for final-payment + display currency
+  const exchangeRate = useMemo(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return 1;
+    return findExchangeRate(
+      exchangeRates,
+      sourceCurrency,
+      displayCurrency,
+      invoiceDate,
+    );
+  }, [invoiceType, displayCurrency, sourceCurrency, invoiceDate, exchangeRates]);
+
   useEffect(() => {
     const newConfig = COMPANY_CONFIGS[templateId] ?? COMPANY_CONFIGS.feilong;
     setCompanyConfig(newConfig);
   }, [templateId]);
 
-  // 从源数据自动填充 bill_to 和 company_name
   useEffect(() => {
     if (sourceItems.length > 0) {
       const first = sourceItems[0];
@@ -75,6 +152,17 @@ const App: React.FC = () => {
     }
   }, [sourceItems]);
 
+  const previewOpts = {
+    invoiceType,
+    vatRatePercent: invoiceType === "consultant" ? vatRatePercent : undefined,
+    displayCurrency:
+      invoiceType === "final_payment" && displayCurrency
+        ? displayCurrency
+        : undefined,
+    exchangeRate: invoiceType === "final_payment" ? exchangeRate : undefined,
+    invoiceDate,
+  };
+
   const handlePreview = () => {
     doPreview(
       companyConfig,
@@ -83,6 +171,7 @@ const App: React.FC = () => {
       taxMode,
       templateId,
       bankAccountId,
+      previewOpts,
     );
   };
 
@@ -100,6 +189,7 @@ const App: React.FC = () => {
       taxMode,
       templateId,
       bankAccountId,
+      previewOpts,
     );
   };
 
@@ -112,7 +202,6 @@ const App: React.FC = () => {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {/* 加载记录 */}
       <div className="section">
         <div className="section-header">
           <h3 className="section-title">选中记录 / Selected Records</h3>
@@ -129,9 +218,27 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* 客户信息 */}
       {sourceItems.length > 0 && (
         <>
+          {/* 账单类型 */}
+          <div className="section">
+            <h3 className="section-title">账单类型 / Invoice Type</h3>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                className={`btn ${invoiceType === "consultant" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setInvoiceType("consultant")}
+              >
+                顾问账单 / Consultant
+              </button>
+              <button
+                className={`btn ${invoiceType === "final_payment" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setInvoiceType("final_payment")}
+              >
+                尾款账单 / Final Payment
+              </button>
+            </div>
+          </div>
+
           <BillToSection
             billTo={billTo}
             companyName={companyName}
@@ -143,7 +250,6 @@ const App: React.FC = () => {
             onCurrencyChange={setCurrency}
           />
 
-          {/* 品牌模板 / 含税模式 / 银行账户 */}
           <div className="section">
             <h3 className="section-title">账单设置 / Invoice Settings</h3>
             <div
@@ -162,19 +268,94 @@ const App: React.FC = () => {
                 </label>
                 <TemplateSelector value={templateId} onChange={setTemplateId} />
               </div>
-              <div>
-                <label
-                  style={{
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "4px",
-                    display: "block",
-                  }}
-                >
-                  含税模式 / Tax Mode
-                </label>
-                <TaxModeToggle value={taxMode} onChange={setTaxMode} />
-              </div>
+
+              {invoiceType === "consultant" && (
+                <>
+                  <div>
+                    <label
+                      style={{
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "4px",
+                        display: "block",
+                      }}
+                    >
+                      税率比例 / Tax Rate Ratio
+                    </label>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {VAT_OPTIONS.map((v) => (
+                        <button
+                          key={v}
+                          className={`btn ${vatRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                          onClick={() => setVatRatePercent(v)}
+                        >
+                          {v}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "4px",
+                        display: "block",
+                      }}
+                    >
+                      含税模式 / Tax Mode
+                    </label>
+                    <TaxModeToggle value={taxMode} onChange={setTaxMode} />
+                  </div>
+                </>
+              )}
+
+              {invoiceType === "final_payment" && (
+                <div>
+                  <label
+                    style={{
+                      fontSize: "12px",
+                      color: "#666",
+                      marginBottom: "4px",
+                      display: "block",
+                    }}
+                  >
+                    展示币种 / Display Currency
+                    {sourceCurrency && (
+                      <span style={{ marginLeft: 8, color: "#999" }}>
+                        (源币种: {sourceCurrency})
+                      </span>
+                    )}
+                  </label>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setDisplayCurrency("")}
+                    >
+                      原始
+                    </button>
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <button
+                        key={c}
+                        className={`btn ${displayCurrency === c ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setDisplayCurrency(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                  {displayCurrency && sourceCurrency && (
+                    <p style={{ fontSize: "12px", color: "#666", marginTop: 6 }}>
+                      汇率: 1 {sourceCurrency} = {exchangeRate.toFixed(6)}{" "}
+                      {displayCurrency}{" "}
+                      {exchangeRate === 1 && sourceCurrency !== displayCurrency
+                        ? "(未在汇率表中找到匹配行)"
+                        : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label
                   style={{
@@ -194,7 +375,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 公司信息（可折叠编辑） */}
           <div className="section">
             <div className="section-header">
               <h3 className="section-title">公司信息 / Company Info</h3>
@@ -218,7 +398,6 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* 明细预览表 */}
           <div className="section">
             <h3 className="section-title">账单明细预览 / Invoice Items</h3>
             <ItemsTable
@@ -228,10 +407,8 @@ const App: React.FC = () => {
             />
           </div>
 
-          {/* 汇总 */}
           <TotalsSummary preview={preview} currency={currency} />
 
-          {/* 操作按钮 */}
           <div className="actions">
             <button
               className="btn btn-primary"
@@ -251,7 +428,6 @@ const App: React.FC = () => {
         </>
       )}
 
-      {/* 结果区 */}
       <ResultSection result={result} />
 
       {result && (
