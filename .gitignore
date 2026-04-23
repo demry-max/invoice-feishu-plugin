@@ -1,9 +1,18 @@
+# macOS AppleDouble metadata
+._*
+.DS_Store
+
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-output/
-*.pdf
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env files
 .env
-!.env.example
-.vite/
-frontend-dist.zip
-package-lock.json
+.env.local
