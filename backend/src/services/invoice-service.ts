@@ -28,14 +28,19 @@ import { getCompanyConfigForTemplate } from "../utils/config";
 import { renderByTemplate } from "../templates/template-registry";
 import { findBankAccount, getDefaultBankAccount } from "../utils/bank-accounts";
 import { htmlToPdf } from "./pdf-service";
+import { openStore, type InvoiceStore } from "../utils/invoice-store";
 
-const OUTPUT_DIR = path.join(__dirname, "../../output");
+const DATA_DIR =
+  process.env.DATA_DIR || path.join(__dirname, "../../data");
 
-if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const invoiceStore = new Map<string, Invoice>();
+const OUTPUT_DIR = DATA_DIR;
+const invoiceStore: InvoiceStore = openStore(
+  path.join(DATA_DIR, "invoices.db"),
+);
 
 const DEFAULT_BANK_BY_TEMPLATE: Record<BrandTemplateId, string> = {
   feilong: "feilong-minsheng",
@@ -253,7 +258,7 @@ export async function generateInvoice(
   invoice.html_url = `${baseUrl}/api/invoices/${invoiceNo}/html`;
   invoice.pdf_url = `${baseUrl}/api/invoices/${invoiceNo}/pdf`;
 
-  invoiceStore.set(invoiceNo, invoice);
+  invoiceStore.insert(invoice);
 
   return {
     invoice_no: invoiceNo,
@@ -281,4 +286,9 @@ export function getInvoicePdf(invoiceNo: string): Buffer | null {
 
 export function getInvoice(invoiceNo: string): Invoice | undefined {
   return invoiceStore.get(invoiceNo);
+}
+
+/** List invoices that reference a specific source (work-order) record id */
+export function listInvoicesForSourceRecord(recordId: string): Invoice[] {
+  return invoiceStore.listBySourceRecord(recordId);
 }
