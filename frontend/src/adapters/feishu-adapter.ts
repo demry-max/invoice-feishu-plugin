@@ -28,6 +28,12 @@ export interface FrontendFeishuAdapter {
 
   /** Read all rows from 汇率表 (if it exists in this base) */
   getExchangeRates(): Promise<ExchangeRateRow[]>;
+
+  /**
+   * Subscribe to Bitable selection changes. Returns an unsubscribe fn.
+   * No-op on the mock adapter.
+   */
+  onSelectionChange(cb: () => void): () => void;
 }
 
 /** Mock 适配器 - 从后端 API 获取 mock 数据 */
@@ -50,6 +56,10 @@ class MockFrontendAdapter implements FrontendFeishuAdapter {
 
   async getExchangeRates(): Promise<ExchangeRateRow[]> {
     return [];
+  }
+
+  onSelectionChange(_cb: () => void): () => void {
+    return () => {};
   }
 }
 
@@ -236,6 +246,28 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
   private async getBitable() {
     const { bitable } = await import("@lark-opdev/block-bitable-api");
     return bitable;
+  }
+
+  onSelectionChange(cb: () => void): () => void {
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+    void this.getBitable().then((bitable) => {
+      if (cancelled) return;
+      try {
+        // Bitable returns a dispose function that removes the listener.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dispose = (bitable.base as any).onSelectionChange(() => cb());
+        if (typeof dispose === "function") {
+          unsubscribe = dispose;
+        }
+      } catch (err) {
+        console.warn("[RealFrontend] onSelectionChange failed:", err);
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
   }
 
   private async getMainTable() {

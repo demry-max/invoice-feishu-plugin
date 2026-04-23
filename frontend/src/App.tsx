@@ -7,7 +7,7 @@ import type {
   DisplayCurrency,
   ExchangeRateRow,
 } from "./types";
-import { useInvoice } from "./hooks/useInvoice";
+import { useInvoice, subscribeSelectionChange } from "./hooks/useInvoice";
 import { CompanyInfoSection } from "./components/CompanyInfoSection";
 import { BillToSection } from "./components/BillToSection";
 import { ItemsTable } from "./components/ItemsTable";
@@ -148,6 +148,45 @@ const App: React.FC = () => {
       if (first.currency) setCurrency(first.currency);
     }
   }, [sourceItems]);
+
+  // Auto-load on mount + on selection change in Bitable
+  useEffect(() => {
+    loadSourceItems();
+    const unsubscribe = subscribeSelectionChange(() => {
+      loadSourceItems();
+    });
+    return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced auto-preview when data or settings change
+  useEffect(() => {
+    if (sourceItems.length === 0) return;
+    const handle = setTimeout(() => {
+      doPreview(
+        companyConfig,
+        billTo,
+        currency,
+        undefined,
+        templateId,
+        bankAccountId,
+        previewOpts,
+      );
+    }, 400);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    sourceItems,
+    invoiceType,
+    vatRatePercent,
+    displayCurrency,
+    exchangeRate,
+    templateId,
+    bankAccountId,
+    billTo,
+    currency,
+    invoiceDate,
+  ]);
 
   const previewOpts = {
     invoiceType,
