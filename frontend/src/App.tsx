@@ -206,18 +206,6 @@ const App: React.FC = () => {
     invoiceDate,
   };
 
-  const handlePreview = () => {
-    doPreview(
-      companyConfig,
-      billTo,
-      currency,
-      undefined, // tax_mode retired — derived from invoice_type on the server
-      templateId,
-      bankAccountId,
-      previewOpts,
-    );
-  };
-
   const handleGenerate = () => {
     if (!billTo.trim()) {
       alert("请填写 Bill To");
@@ -487,13 +475,6 @@ const App: React.FC = () => {
           <TotalsSummary preview={preview} currency={currency} />
 
           <div className="actions">
-            <button
-              className="btn btn-primary"
-              onClick={handlePreview}
-              disabled={loading}
-            >
-              {loading ? "计算中..." : "生成预览"}
-            </button>
             <button
               className="btn btn-danger"
               onClick={handleGenerate}
