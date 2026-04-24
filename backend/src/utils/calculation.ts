@@ -91,9 +91,14 @@ export function calcVat(
   return round2((taxableSubtotal * vatRatePercent) / 100);
 }
 
-/** 计算 EWT 预扣税（应税小计 × 2%） */
-export function calcEwt(taxableSubtotal: number): number {
-  return round2((taxableSubtotal * EWT_RATE) / 100);
+/**
+ * 计算 EWT 预扣税。默认 2%，但允许调用方显式传 0 (e.g. 菲龙咨询 never charges EWT).
+ */
+export function calcEwt(
+  taxableSubtotal: number,
+  ewtRatePercent: number = EWT_RATE,
+): number {
+  return round2((taxableSubtotal * ewtRatePercent) / 100);
 }
 
 /** 顾问账单合计: subtotal + VAT − EWT */

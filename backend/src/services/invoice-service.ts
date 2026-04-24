@@ -67,9 +67,31 @@ function resolveBankAccount(
   return getDefaultBankAccount();
 }
 
-function resolveVatRate(taxMode: TaxMode, override?: number): number {
+/**
+ * Consultant-invoice VAT resolution (new semantics — 2026-04-24):
+ *   tax_mode = "tax_excluded" (UI: 不含税) → no VAT
+ *   tax_mode = "tax_included" (UI: 含税)   → vat_rate_percent from request, default 6
+ */
+function resolveConsultantVatRate(
+  taxMode: TaxMode,
+  override?: number,
+): number {
+  if (taxMode !== "tax_included") return 0;
   if (typeof override === "number" && override >= 0) return override;
-  return taxMode === "tax_included" ? 0 : DEFAULT_VAT_RATE;
+  return DEFAULT_VAT_RATE;
+}
+
+/**
+ * EWT applies only to consultant invoices under Starlight, in tax_included mode.
+ * Feilong invoices (菲龙咨询) never compute EWT.
+ */
+function resolveConsultantEwtRate(
+  taxMode: TaxMode,
+  templateId: BrandTemplateId,
+): number {
+  if (taxMode !== "tax_included") return 0;
+  if (templateId !== "starlight") return 0;
+  return EWT_RATE;
 }
 
 function pickCurrencySymbol(
@@ -83,14 +105,13 @@ function pickCurrencySymbol(
 }
 
 export function previewInvoice(req: PreviewRequest): PreviewResponse {
-  // Derive tax mode from invoice type: final_payment shows a single amount
-  // (tax_included); consultant shows price + VAT separately (tax_excluded).
-  const invoiceTypeDerivedMode: TaxMode =
-    (req.invoice_type ?? "consultant") === "final_payment"
-      ? "tax_included"
-      : "tax_excluded";
-  const taxMode: TaxMode = req.tax_mode ?? invoiceTypeDerivedMode;
+  // tax_mode semantics (new, 2026-04-24):
+  //   tax_excluded (不含税)  → invoice has no tax (Total = Grand Total)
+  //   tax_included (含税)    → VAT (user-selected) and EWT (Starlight only) apply
+  // Default for both invoice types: tax_included.
+  const taxMode: TaxMode = req.tax_mode ?? "tax_included";
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
+  const templateId: BrandTemplateId = req.template_id ?? "feilong";
   const exchangeRate =
     typeof req.exchange_rate === "number" && req.exchange_rate > 0
       ? req.exchange_rate
@@ -134,10 +155,11 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
   }
 
   // consultant (default)
-  const vatRate = resolveVatRate(taxMode, req.vat_rate_percent);
+  const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
+  const ewtRate = resolveConsultantEwtRate(taxMode, templateId);
   const taxableSubtotal = calcTaxableSubtotal(items);
   const vatAmount = calcVat(taxableSubtotal, vatRate);
-  const ewtAmount = calcEwt(taxableSubtotal);
+  const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
   const grandTotal = calcConsultantGrandTotal(subtotal, vatAmount, ewtAmount);
 
   return {
@@ -150,7 +172,7 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     tax_mode: taxMode,
     invoice_type: invoiceType,
     taxable_subtotal: taxableSubtotal,
-    ewt_rate: EWT_RATE,
+    ewt_rate: ewtRate,
     ewt_amount: ewtAmount,
   };
 }
@@ -161,13 +183,8 @@ export async function generateInvoice(
   const invoiceNo = generateInvoiceNo();
   const invoiceDate =
     req.invoice_date || new Date().toISOString().split("T")[0];
-  // Derive tax mode from invoice type: final_payment shows a single amount
-  // (tax_included); consultant shows price + VAT separately (tax_excluded).
-  const invoiceTypeDerivedMode: TaxMode =
-    (req.invoice_type ?? "consultant") === "final_payment"
-      ? "tax_included"
-      : "tax_excluded";
-  const taxMode: TaxMode = req.tax_mode ?? invoiceTypeDerivedMode;
+  // Default tax mode to tax_included (see previewInvoice for semantics).
+  const taxMode: TaxMode = req.tax_mode ?? "tax_included";
   const templateId: BrandTemplateId = req.template_id ?? "feilong";
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const exchangeRate =
@@ -226,10 +243,11 @@ export async function generateInvoice(
       display_currency: req.display_currency,
     };
   } else {
-    const vatRate = resolveVatRate(taxMode, req.vat_rate_percent);
+    const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
+    const ewtRate = resolveConsultantEwtRate(taxMode, templateId);
     const taxableSubtotal = calcTaxableSubtotal(items);
     const vatAmount = calcVat(taxableSubtotal, vatRate);
-    const ewtAmount = calcEwt(taxableSubtotal);
+    const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
     const grandTotal = calcConsultantGrandTotal(subtotal, vatAmount, ewtAmount);
     invoice = {
       invoice_no: invoiceNo,
@@ -253,7 +271,7 @@ export async function generateInvoice(
       items,
       invoice_type: invoiceType,
       taxable_subtotal: taxableSubtotal,
-      ewt_rate: EWT_RATE,
+      ewt_rate: ewtRate,
       ewt_amount: ewtAmount,
     };
   }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import type {
   CompanyConfig,
   BrandTemplateId,
+  TaxMode,
   InvoiceType,
   VatRatePercent,
   DisplayCurrency,
@@ -115,6 +116,7 @@ const App: React.FC = () => {
   // New: invoice type + tax rate + display currency
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("consultant");
   const [vatRatePercent, setVatRatePercent] = useState<VatRatePercent>(6);
+  const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency | "">(
     "",
   );
@@ -144,7 +146,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (sourceItems.length > 0) {
       const first = sourceItems[0];
-      if (!billTo && first.bill_to) setBillTo(first.bill_to);
+      // Bill To input captures the contact/customer name line
+      if (!billTo && first.customer_name) setBillTo(first.customer_name);
+      // Company name input captures the invoice heading line
       if (!companyName && first.company_name)
         setCompanyName(first.company_name);
       if (first.currency) setCurrency(first.currency);
@@ -191,8 +195,10 @@ const App: React.FC = () => {
     templateId,
     bankAccountId,
     billTo,
+    companyName,
     currency,
     invoiceDate,
+    taxMode,
   ]);
 
   const previewOpts = {
@@ -217,7 +223,7 @@ const App: React.FC = () => {
       companyConfig,
       invoiceDate,
       currency,
-      undefined, // tax_mode retired — derived from invoice_type on the server
+      taxMode,
       templateId,
       bankAccountId,
       previewOpts,
@@ -358,20 +364,48 @@ const App: React.FC = () => {
                         display: "block",
                       }}
                     >
-                      税率比例 / Tax Rate Ratio
+                      含税模式 / Tax Mode
                     </label>
                     <div style={{ display: "flex", gap: "6px" }}>
-                      {VAT_OPTIONS.map((v) => (
-                        <button
-                          key={v}
-                          className={`btn ${vatRatePercent === v ? "btn-primary" : "btn-secondary"}`}
-                          onClick={() => setVatRatePercent(v)}
-                        >
-                          {v}%
-                        </button>
-                      ))}
+                      <button
+                        className={`btn ${taxMode === "tax_excluded" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setTaxMode("tax_excluded")}
+                      >
+                        不含税
+                      </button>
+                      <button
+                        className={`btn ${taxMode === "tax_included" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setTaxMode("tax_included")}
+                      >
+                        含税
+                      </button>
                     </div>
                   </div>
+                  {taxMode === "tax_included" && (
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "12px",
+                          color: "#666",
+                          marginBottom: "4px",
+                          display: "block",
+                        }}
+                      >
+                        税率比例 / Tax Rate Ratio
+                      </label>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        {VAT_OPTIONS.map((v) => (
+                          <button
+                            key={v}
+                            className={`btn ${vatRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                            onClick={() => setVatRatePercent(v)}
+                          >
+                            {v}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
