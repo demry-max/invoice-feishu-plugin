@@ -404,9 +404,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const mainBillNumber = String(
         firstValue(mainFields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
       ).trim();
-      const mainBillingDate = String(
-        firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
-      ).slice(0, 10);
+      const mainBillingDate = toIsoDate(
+        firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE),
+      );
 
       console.log(
         "[RealFrontend] 工单主表 record:",
@@ -590,9 +590,8 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             firstValue(fields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
           ).trim() || undefined,
         billing_date:
-          String(
-            firstValue(fields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
-          ).slice(0, 10) || undefined,
+          toIsoDate(firstValue(fields, MAIN_TABLE_FIELDS.BILLING_DATE)) ||
+          undefined,
         amount_refunded: parseNumber(
           firstValue(fields, MAIN_TABLE_FIELDS.AMOUNT_REFUNDED),
         ),
@@ -643,12 +642,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       try {
         const rec = await table.getRecordById(id);
         const f = extractFields(rec.fields, nameById);
-        const effective = String(
-          firstValue(f, EXCHANGE_RATE_FIELDS.EFFECTIVE_DATE) ?? "",
-        ).slice(0, 10);
-        const expiry = String(
-          firstValue(f, EXCHANGE_RATE_FIELDS.EXPIRY_DATE) ?? "",
-        ).slice(0, 10);
+        const effective = toIsoDate(
+          firstValue(f, EXCHANGE_RATE_FIELDS.EFFECTIVE_DATE),
+        );
+        const expiry = toIsoDate(
+          firstValue(f, EXCHANGE_RATE_FIELDS.EXPIRY_DATE),
+        );
         const from = String(
           firstValue(f, EXCHANGE_RATE_FIELDS.FROM_CURRENCY) ?? "",
         )
@@ -675,7 +674,16 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
     }
     // suppress unused-var warning for idByName
     void idByName;
-    console.log("[RealFrontend] 汇率表 rows:", rows.length);
+    console.log(
+      "[RealFrontend] 汇率表 rows:",
+      rows.length,
+      rows
+        .slice(0, 10)
+        .map(
+          (r) =>
+            `${r.from_currency}→${r.to_currency}=${r.rate} [${r.effective_date}..${r.expiry_date ?? "∞"}]`,
+        ),
+    );
     return rows;
   }
 
@@ -838,6 +846,23 @@ function formatDate(v: unknown): string {
   const d = new Date(Number(v));
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().split("T")[0];
+}
+
+/**
+ * Normalize a Bitable date-field value to YYYY-MM-DD.
+ * Handles: ISO-ish strings (sliced), numeric / numeric-string timestamps,
+ * and objects with .timestamp (via normalizeBitableValue upstream).
+ */
+function toIsoDate(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") {
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+    const n = Number(v);
+    if (Number.isFinite(n)) return formatDate(n);
+    return v.slice(0, 10);
+  }
+  if (typeof v === "number") return formatDate(v);
+  return "";
 }
 
 /**
