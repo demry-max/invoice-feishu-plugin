@@ -45,6 +45,10 @@ const CURRENCY_OPTIONS: DisplayCurrency[] = ["CNY", "USD", "PHP"];
  * Look up an exchange rate for (from → to) effective on or before `date`.
  * Returns 1 when from === to, or when no matching row is found.
  */
+/**
+ * Per spec (三、一、汇率表): pick rows whose (from, to) match AND where
+ * effective_date <= date <= expiry_date (expiry_date optional = open-ended).
+ */
 function findExchangeRate(
   rows: ExchangeRateRow[],
   from: string,
@@ -56,27 +60,30 @@ function findExchangeRate(
   const T = to.trim().toUpperCase();
   if (F === T) return 1;
 
-  const matches = rows
+  const inWindow = (r: ExchangeRateRow) =>
+    r.effective_date <= date && (!r.expiry_date || date <= r.expiry_date);
+
+  const byLatestEffective = (a: ExchangeRateRow, b: ExchangeRateRow) =>
+    b.effective_date.localeCompare(a.effective_date);
+
+  const direct = rows
     .filter(
       (r) =>
         r.from_currency.toUpperCase() === F &&
         r.to_currency.toUpperCase() === T &&
-        r.effective_date <= date,
+        inWindow(r),
     )
-    .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+    .sort(byLatestEffective);
+  if (direct.length > 0) return direct[0].rate;
 
-  if (matches.length > 0) return matches[0].rate;
-
-  // Try reciprocal
   const reciprocal = rows
     .filter(
       (r) =>
         r.from_currency.toUpperCase() === T &&
         r.to_currency.toUpperCase() === F &&
-        r.effective_date <= date,
+        inWindow(r),
     )
-    .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
-
+    .sort(byLatestEffective);
   if (reciprocal.length > 0 && reciprocal[0].rate > 0) {
     return 1 / reciprocal[0].rate;
   }
@@ -503,6 +510,7 @@ const App: React.FC = () => {
               sourceItems={sourceItems}
               invoiceItems={preview?.items}
               currency={currency}
+              invoiceType={invoiceType}
             />
           </div>
 

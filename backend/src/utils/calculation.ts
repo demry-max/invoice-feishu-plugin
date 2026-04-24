@@ -33,20 +33,42 @@ export function buildInvoiceItems(
   } = {},
 ): InvoiceItem[] {
   const { invoiceType = "consultant", exchangeRate = 1 } = opts;
+  const scale = (v: number | undefined): number =>
+    round2((v ?? 0) * exchangeRate);
+
   return sources.map((s, idx) => {
-    const displayPrice = round2((s.price || 0) * exchangeRate);
+    const displayPrice = scale(s.price);
     const qty = Math.max(s.qty, 1);
     const discount = s.discount_percent || 0;
 
-    let lineTotal: number;
     if (invoiceType === "final_payment") {
-      // Final payment uses actual_amount_incurred when provided, else price×qty
-      const actual = (s.actual_amount_incurred ?? 0) * exchangeRate;
-      lineTotal = round2(actual > 0 ? actual : displayPrice * qty * (1 - discount / 100));
-    } else {
-      lineTotal = calcLineTotal(displayPrice, qty, discount);
+      const amountBilled = scale(s.amount_billed ?? s.price);
+      const actual = scale(s.actual_amount_incurred);
+      const paid = scale(s.amount_paid);
+      const balance = round2(actual - paid);
+      return {
+        invoice_no: invoiceNo,
+        service: s.service,
+        service_period: s.service_period,
+        price: displayPrice,
+        qty,
+        discount_percent: discount,
+        // Keep line_total populated for legacy consumers (= actual amount).
+        line_total: actual,
+        chinese_translation: s.chinese_translation || "",
+        remark: s.remark || "",
+        note: s.remark || "",
+        sort_order: idx + 1,
+        amount_billed: amountBilled,
+        actual_amount_incurred: actual,
+        amount_paid: paid,
+        balance,
+        bill_number: s.bill_number,
+        billing_date: s.billing_date,
+      };
     }
 
+    // Consultant
     return {
       invoice_no: invoiceNo,
       service: s.service,
@@ -54,17 +76,11 @@ export function buildInvoiceItems(
       price: displayPrice,
       qty,
       discount_percent: discount,
-      line_total: lineTotal,
+      line_total: calcLineTotal(displayPrice, qty, discount),
       chinese_translation: s.chinese_translation || "",
       remark: s.remark || "",
       sort_order: idx + 1,
       tax_eligible: !!s.tax_eligible,
-      actual_amount_incurred: s.actual_amount_incurred
-        ? round2((s.actual_amount_incurred || 0) * exchangeRate)
-        : undefined,
-      amount_paid: s.amount_paid
-        ? round2((s.amount_paid || 0) * exchangeRate)
-        : undefined,
     };
   });
 }
@@ -110,18 +126,21 @@ export function calcConsultantGrandTotal(
   return round2(subtotal + vatAmount - ewtAmount);
 }
 
+/** 尾款账单 total_balance = Σ(balance) = Σ(actual - paid) */
+export function calcTotalBalance(items: InvoiceItem[]): number {
+  return round2(items.reduce((sum, it) => sum + (it.balance ?? 0), 0));
+}
+
 /**
- * 尾款账单合计: Σ(Actual Amount Incurred) − Σ(Amount Paid)
- *              − Total Deduction Amount + Amount Refunded
- * 注：subtotal 在 final_payment 模式下已经是 Σ(Actual Amount Incurred) 换算后的值
+ * 尾款账单 final_balance = Total Balance − Deductible Amount + Amount Refunded
+ * （对应文档 "Final Balance = Total Balance - Deductible Amount + Amount Refunded"）
  */
-export function calcFinalPaymentGrandTotal(
-  subtotal: number,
-  amountPaidTotal: number,
-  totalDeductionAmount: number,
+export function calcFinalBalance(
+  totalBalance: number,
+  deductibleAmount: number,
   amountRefunded: number,
 ): number {
-  return round2(subtotal - amountPaidTotal - totalDeductionAmount + amountRefunded);
+  return round2(totalBalance - deductibleAmount + amountRefunded);
 }
 
 /** 旧 API — 保留向后兼容（纯 subtotal + vat） */

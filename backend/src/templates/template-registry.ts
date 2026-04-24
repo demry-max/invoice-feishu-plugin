@@ -103,6 +103,10 @@ export function renderByTemplate(
   config: CompanyConfig,
   bankAccount: BankAccount,
 ): string {
+  if (invoice.invoice_type === "final_payment") {
+    return renderFinalPaymentHtml(templateId, invoice, config, bankAccount);
+  }
+
   const theme = THEMES[templateId] ?? THEMES.feilong;
   const css = getCss(theme.cssFile);
   const logoDataUri = getLogo(theme.logoFile);
@@ -383,4 +387,156 @@ function buildBankHtml(bank: BankAccount): string {
 
   lines.push(`</div>`);
   return lines.join("\n");
+}
+
+// ============================================================
+// Final-payment (尾款账单) template — distinct layout per spec:
+//   最终账单插件需求.docx §三.
+// ============================================================
+function renderFinalPaymentHtml(
+  templateId: BrandTemplateId,
+  invoice: Invoice,
+  config: CompanyConfig,
+  bankAccount: BankAccount,
+): string {
+  const theme = THEMES[templateId] ?? THEMES.feilong;
+  const css = getCss(theme.cssFile);
+  const logoDataUri = getLogo(theme.logoFile);
+  const c = invoice.currency;
+
+  const itemsHtml = invoice.items
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.bill_number ?? "")}</td>
+        <td>${escapeHtml(item.billing_date ?? "")}</td>
+        <td class="text-left">${escapeHtml(item.service)}</td>
+        <td class="text-right">${formatAmount(item.amount_billed ?? 0, c)}</td>
+        <td class="text-right">${formatAmount(item.actual_amount_incurred ?? 0, c)}</td>
+        <td class="text-right">${formatAmount(item.amount_paid ?? 0, c)}</td>
+        <td class="text-right">${formatAmount(item.balance ?? 0, c)}</td>
+        <td class="text-left">${escapeHtml(item.note ?? item.remark ?? "")}</td>
+      </tr>`,
+    )
+    .join("\n");
+
+  const sum = (key: keyof typeof invoice.items[number]): number =>
+    invoice.items.reduce((s, it) => s + (((it as unknown) as Record<string, number>)[key as string] ?? 0), 0);
+  const billedSum = sum("amount_billed");
+  const actualSum = sum("actual_amount_incurred");
+  const paidSum = sum("amount_paid");
+  const balanceSum = sum("balance");
+
+  const totalsRows: string[] = [];
+  totalsRows.push(`
+        <tr>
+          <td class="label">Total Balance</td>
+          <td class="value">${formatAmount(invoice.total_balance ?? balanceSum, c)}</td>
+        </tr>`);
+  if ((invoice.amount_refunded ?? 0) > 0) {
+    totalsRows.push(`
+        <tr>
+          <td class="label">Amount Refunded</td>
+          <td class="value">${formatAmount(invoice.amount_refunded ?? 0, c)}</td>
+        </tr>`);
+  }
+  if ((invoice.total_deduction_amount ?? 0) > 0) {
+    totalsRows.push(`
+        <tr>
+          <td class="label">Deductible Amount</td>
+          <td class="value">${formatAmount(invoice.total_deduction_amount ?? 0, c)}</td>
+        </tr>`);
+  }
+  totalsRows.push(`
+        <tr class="grand-total">
+          <td class="label">Final Balance</td>
+          <td class="value">${formatAmount(invoice.final_balance ?? invoice.grand_total, c)}</td>
+        </tr>`);
+
+  const clientName = invoice.client_name ?? invoice.bill_to;
+  const clientCompany = invoice.client_company ?? invoice.company_name;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Final Billing Invoice ${escapeHtml(invoice.invoice_no)}</title>
+  <style>${css}</style>
+</head>
+<body>
+  <div class="invoice-page">
+    <div class="invoice-header">
+      <div class="company-info">
+        <div class="company-name">${escapeHtml(config.name)}</div>
+        <div class="company-address">${escapeHtml(config.address_line1)}</div>
+        <div class="company-address">${escapeHtml(config.address_line2)}</div>
+        ${config.address_line3 ? `<div class="company-address">${escapeHtml(config.address_line3)}</div>` : ""}
+        <div class="company-email">${escapeHtml(config.email)}</div>
+      </div>
+      ${
+        logoDataUri
+          ? `<div class="company-logo"><img src="${logoDataUri}" alt="Logo" /></div>`
+          : ""
+      }
+    </div>
+
+    <h2 style="text-align:center;margin:16px 0 20px;">Final Billing Invoice</h2>
+
+    <div class="invoice-meta" style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="bill-to">
+        <div><strong>Client Name:</strong> ${escapeHtml(clientName)}</div>
+        <div><strong>Client Company:</strong> ${escapeHtml(clientCompany)}</div>
+      </div>
+      <div class="invoice-badges">
+        <div class="badge">
+          <span class="badge-label">DATE</span>
+          <span class="badge-value">${escapeHtml(invoice.invoice_date)}</span>
+        </div>
+        <div class="badge">
+          <span class="badge-label">BILLING No.</span>
+          <span class="badge-value">${escapeHtml(invoice.invoice_no)}</span>
+        </div>
+      </div>
+    </div>
+
+    <table class="invoice-table">
+      <thead>
+        <tr>
+          <th>Bill Number</th>
+          <th>Date</th>
+          <th>Product/Service</th>
+          <th>Amount Billed</th>
+          <th>Actual Amount Incurred</th>
+          <th>Amount Paid</th>
+          <th>Balance</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+        <tr class="grand-total">
+          <td colspan="3" class="text-right">Grand Total</td>
+          <td class="text-right">${formatAmount(billedSum, c)}</td>
+          <td class="text-right">${formatAmount(actualSum, c)}</td>
+          <td class="text-right">${formatAmount(paidSum, c)}</td>
+          <td class="text-right">${formatAmount(balanceSum, c)}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="totals-section">
+      <table class="totals-table">
+        ${totalsRows.join("\n")}
+      </table>
+    </div>
+
+    <div class="invoice-footer">
+      ${buildBankHtml(bankAccount)}
+    </div>
+  </div>
+</body>
+</html>`;
 }

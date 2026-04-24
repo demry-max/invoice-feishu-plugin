@@ -70,16 +70,20 @@ const MAIN_TABLE_FIELDS = {
   CUSTOMER_NAME: ["Customer Name", "联系人姓名"],
   WECHAT_NAME: ["WeChat Name", "客户微信名称"],
   LINKED_SERVICE: ["Associated Service ID", "关联服务ID"],
-  // Consultant-invoice write-back targets
+  // Main-table identifiers copied onto final_payment invoice rows
   BILL_NUMBER: ["Bill Number", "账单编号"],
+  BILLING_DATE: ["Billing Date", "账单日期"],
+  // Consultant-invoice write-back targets
   HTML_LINK: ["HTML link", "HTML链接"],
   PDF_LINK: ["PDF link", "PDF链接"],
   ADD_VAT: ["Add:VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
   LESS_EWT: ["Less:EWT(2%)", "Less:EWT", "EWT Amount", "预扣税"],
   // Final-payment write-back targets
   FINAL_BILL_NUMBER: ["Final Billing Number", "Final Bill Number"],
+  FINAL_BILLING_DATE: ["Final Billing Date"],
   FINAL_HTML_LINK: ["Final HTML link"],
   FINAL_PDF_LINK: ["Final PDF link"],
+  FINAL_BALANCE: ["Final Balance"],
   // Other main-table reads
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
@@ -109,22 +113,27 @@ const EXCHANGE_RATE_FIELDS = {
     "日期",
     "Exchange Date",
   ],
+  EXPIRY_DATE: ["Expiry Date", "失效日期", "到期日期"],
   FROM_CURRENCY: [
+    "Original currency",
+    "Original Currency",
     "From Currency",
     "Source Currency",
     "Base Currency",
-    "源币种",
     "原币种",
+    "源币种",
     "From",
   ],
   TO_CURRENCY: [
-    "To Currency",
+    "Target currency",
     "Target Currency",
+    "Ttarget currency",
+    "To Currency",
     "Quote Currency",
     "目标币种",
     "To",
   ],
-  RATE: ["Exchange Rate", "Rate", "汇率"],
+  RATE: ["Exchange rate", "Exchange Rate", "Rate", "汇率"],
 } as const;
 
 // ============================================================
@@ -395,6 +404,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const mainTotalDeduction = parseNumber(
         firstValue(mainFields, MAIN_TABLE_FIELDS.TOTAL_DEDUCTION_AMOUNT),
       );
+      const mainBillNumber = String(
+        firstValue(mainFields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
+      ).trim();
+      const mainBillingDate = String(
+        firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
+      ).slice(0, 10);
 
       console.log(
         "[RealFrontend] 工单主表 record:",
@@ -480,6 +495,11 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             amount_paid: parseNumber(
               firstValue(svcFields, SERVICE_TABLE_FIELDS.AMOUNT_PAID),
             ),
+            amount_billed: parseNumber(
+              firstValue(svcFields, SERVICE_TABLE_FIELDS.TOTAL),
+            ),
+            bill_number: mainBillNumber || undefined,
+            billing_date: mainBillingDate || undefined,
             amount_refunded: mainAmountRefunded,
             total_deduction_amount: mainTotalDeduction,
             source_currency: String(
@@ -562,6 +582,17 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         amount_paid: parseNumber(
           firstValue(fields, SERVICE_TABLE_FIELDS.AMOUNT_PAID),
         ),
+        amount_billed: parseNumber(
+          firstValue(fields, SERVICE_TABLE_FIELDS.TOTAL),
+        ),
+        bill_number:
+          String(
+            firstValue(fields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
+          ).trim() || undefined,
+        billing_date:
+          String(
+            firstValue(fields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
+          ).slice(0, 10) || undefined,
         amount_refunded: parseNumber(
           firstValue(fields, MAIN_TABLE_FIELDS.AMOUNT_REFUNDED),
         ),
@@ -609,8 +640,11 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       try {
         const rec = await table.getRecordById(id);
         const f = extractFields(rec.fields, nameById);
-        const date = String(
+        const effective = String(
           firstValue(f, EXCHANGE_RATE_FIELDS.EFFECTIVE_DATE) ?? "",
+        ).slice(0, 10);
+        const expiry = String(
+          firstValue(f, EXCHANGE_RATE_FIELDS.EXPIRY_DATE) ?? "",
         ).slice(0, 10);
         const from = String(
           firstValue(f, EXCHANGE_RATE_FIELDS.FROM_CURRENCY) ?? "",
@@ -624,7 +658,13 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
           .toUpperCase();
         const rate = parseNumber(firstValue(f, EXCHANGE_RATE_FIELDS.RATE));
         if (from && to && rate > 0) {
-          rows.push({ effective_date: date, from_currency: from, to_currency: to, rate });
+          rows.push({
+            effective_date: effective,
+            expiry_date: expiry || undefined,
+            from_currency: from,
+            to_currency: to,
+            rate,
+          });
         }
       } catch (err) {
         console.warn("[RealFrontend] 读取汇率行失败:", id, err);
@@ -662,8 +702,13 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
 
     if (invoice.invoice_type === "final_payment") {
       put(MAIN_TABLE_FIELDS.FINAL_BILL_NUMBER, invoice.invoice_no);
+      put(MAIN_TABLE_FIELDS.FINAL_BILLING_DATE, invoice.invoice_date);
       put(MAIN_TABLE_FIELDS.FINAL_HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.FINAL_PDF_LINK, invoice.pdf_url ?? "");
+      put(
+        MAIN_TABLE_FIELDS.FINAL_BALANCE,
+        invoice.final_balance ?? invoice.grand_total,
+      );
     } else {
       put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
       put(MAIN_TABLE_FIELDS.HTML_LINK, invoice.html_url ?? "");

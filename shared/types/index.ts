@@ -52,6 +52,11 @@ export interface SourceItem {
   actual_amount_incurred?: number;
   // Final-payment invoice: running amount already paid per line
   amount_paid?: number;
+  // Final-payment invoice: billed amount per service line (服务明细表.Total)
+  amount_billed?: number;
+  // Final-payment invoice: main-record identifiers copied onto each line
+  bill_number?: string;
+  billing_date?: string;
   // Main-record context (same for every line in one invoice)
   amount_refunded?: number;
   total_deduction_amount?: number;
@@ -59,11 +64,12 @@ export interface SourceItem {
   source_currency?: string;
 }
 
-/** 汇率表行：按账单生成日期查询 */
+/** 汇率表行：按账单生成日期在 [effective_date, expiry_date] 区间内查找 */
 export interface ExchangeRateRow {
   effective_date: string; // YYYY-MM-DD
-  from_currency: string;
-  to_currency: string;
+  expiry_date?: string; // YYYY-MM-DD (optional, open-ended if missing)
+  from_currency: string; // "Original currency" on 汇率表
+  to_currency: string; // "Target currency" on 汇率表
   rate: number;
 }
 
@@ -80,8 +86,14 @@ export interface InvoiceItem {
   remark: string;
   sort_order: number;
   tax_eligible?: boolean;
+  // Final-payment-only fields
   actual_amount_incurred?: number;
   amount_paid?: number;
+  amount_billed?: number;
+  balance?: number;
+  bill_number?: string;
+  billing_date?: string;
+  note?: string;
 }
 
 /** 账单主表 */
@@ -115,6 +127,12 @@ export interface Invoice {
   total_deduction_amount?: number;
   exchange_rate?: number;
   display_currency?: string;
+  // Final-payment-specific totals
+  total_balance?: number;
+  final_balance?: number;
+  // Client header for final-payment template
+  client_name?: string;
+  client_company?: string;
 }
 
 /** 公司信息配置 */
@@ -162,6 +180,8 @@ export interface PreviewResponse {
   total_deduction_amount?: number;
   exchange_rate?: number;
   display_currency?: string;
+  total_balance?: number;
+  final_balance?: number;
 }
 
 /** 生成账单请求 */
