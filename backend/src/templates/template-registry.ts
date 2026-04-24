@@ -413,7 +413,7 @@ function renderFinalPaymentHtml(
       (item) => `
       <tr>
         <td>${escapeHtml(item.bill_number ?? "")}</td>
-        <td>${escapeHtml(item.billing_date ?? "")}</td>
+        <td>${escapeHtml(item.billing_date || invoice.invoice_date || "")}</td>
         <td class="text-left">${escapeHtml(item.service)}</td>
         <td class="text-right">${formatAmount(item.amount_billed ?? 0, c)}</td>
         <td class="text-right">${formatAmount(item.actual_amount_incurred ?? 0, c)}</td>

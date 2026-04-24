@@ -580,6 +580,7 @@ const App: React.FC = () => {
               invoiceItems={preview?.items}
               currency={currency}
               invoiceType={invoiceType}
+              invoiceDate={invoiceDate}
             />
           </div>
 

@@ -7,6 +7,8 @@ interface Props {
   invoiceItems?: InvoiceItem[];
   currency: string;
   invoiceType?: InvoiceType;
+  /** Fallback for the final_payment Date column when source.billing_date is empty */
+  invoiceDate?: string;
 }
 
 export const ItemsTable: React.FC<Props> = ({
@@ -14,6 +16,7 @@ export const ItemsTable: React.FC<Props> = ({
   invoiceItems,
   currency,
   invoiceType = "consultant",
+  invoiceDate,
 }) => {
   if (invoiceType === "final_payment") {
     return (
@@ -21,6 +24,7 @@ export const ItemsTable: React.FC<Props> = ({
         sourceItems={sourceItems}
         invoiceItems={invoiceItems}
         currency={currency}
+        invoiceDate={invoiceDate}
       />
     );
   }
@@ -126,17 +130,19 @@ interface FinalPaymentTableProps {
   sourceItems?: SourceItem[];
   invoiceItems?: InvoiceItem[];
   currency: string;
+  invoiceDate?: string;
 }
 
 const FinalPaymentTable: React.FC<FinalPaymentTableProps> = ({
   sourceItems,
   invoiceItems,
   currency,
+  invoiceDate,
 }) => {
   const rows = invoiceItems
     ? invoiceItems.map((i) => ({
         bill_number: i.bill_number ?? "",
-        billing_date: i.billing_date ?? "",
+        billing_date: i.billing_date || invoiceDate || "",
         service: i.service,
         amount_billed: i.amount_billed ?? 0,
         actual: i.actual_amount_incurred ?? 0,
@@ -149,7 +155,7 @@ const FinalPaymentTable: React.FC<FinalPaymentTableProps> = ({
         const paid = s.amount_paid ?? 0;
         return {
           bill_number: s.bill_number ?? "",
-          billing_date: s.billing_date ?? "",
+          billing_date: s.billing_date || invoiceDate || "",
           service: s.service,
           amount_billed: s.amount_billed ?? s.price ?? 0,
           actual,
