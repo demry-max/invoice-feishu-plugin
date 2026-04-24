@@ -230,7 +230,7 @@ const App: React.FC = () => {
         companyConfig,
         billTo,
         currency,
-        undefined,
+        taxMode,
         templateId,
         bankAccountId,
         previewOpts,
