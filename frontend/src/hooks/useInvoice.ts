@@ -41,6 +41,8 @@ export interface PreviewOptions {
   vatRatePercent?: VatRatePercent;
   displayCurrency?: DisplayCurrency;
   exchangeRate?: number;
+  exchangeRateBill?: number;
+  exchangeRateFinal?: number;
   invoiceDate?: string;
 }
 
@@ -128,6 +130,8 @@ export function useInvoice() {
           vat_rate_percent: opts?.vatRatePercent,
           display_currency: opts?.displayCurrency,
           exchange_rate: opts?.exchangeRate,
+          exchange_rate_bill: opts?.exchangeRateBill,
+          exchange_rate_final: opts?.exchangeRateFinal,
           invoice_date: opts?.invoiceDate,
         });
         setState((s) => ({ ...s, preview: res, loading: false }));
@@ -167,6 +171,8 @@ export function useInvoice() {
           vat_rate_percent: opts?.vatRatePercent,
           display_currency: opts?.displayCurrency,
           exchange_rate: opts?.exchangeRate,
+          exchange_rate_bill: opts?.exchangeRateBill,
+          exchange_rate_final: opts?.exchangeRateFinal,
         });
         setState((s) => ({ ...s, result: res, loading: false }));
 
