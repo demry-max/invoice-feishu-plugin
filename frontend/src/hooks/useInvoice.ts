@@ -171,7 +171,7 @@ export function useInvoice() {
         setState((s) => ({ ...s, result: res, loading: false }));
 
         adapter
-          .writeBackInvoiceUrls(res.invoice_no, res.html_url, res.pdf_url)
+          .writeBackInvoice(res.invoice)
           .catch((writeErr) =>
             console.error("[useInvoice] Write-back failed:", writeErr),
           );

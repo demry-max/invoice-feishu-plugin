@@ -9,7 +9,7 @@
  * - 服务报价表：服务明细（服务内容、价格、数量、折扣等）
  */
 
-import type { SourceItem, ExchangeRateRow } from "../types";
+import type { SourceItem, ExchangeRateRow, Invoice } from "../types";
 import { getMockSourceItems } from "../services/api";
 import { FEISHU_MODE } from "../config";
 
@@ -19,12 +19,11 @@ export interface FrontendFeishuAdapter {
   /** The main table record IDs that were read (for write-back) */
   getMainRecordIds(): string[];
 
-  /** Write invoice URL back to source records in Bitable */
-  writeBackInvoiceUrls(
-    invoiceNo: string,
-    htmlUrl: string,
-    pdfUrl: string,
-  ): Promise<void>;
+  /**
+   * Write the generated invoice back onto each main-table record.
+   * Targets differ per invoice type; see the MAIN_TABLE_FIELDS aliases.
+   */
+  writeBackInvoice(invoice: Invoice): Promise<void>;
 
   /** Read all rows from 汇率表 (if it exists in this base) */
   getExchangeRates(): Promise<ExchangeRateRow[]>;
@@ -46,12 +45,12 @@ class MockFrontendAdapter implements FrontendFeishuAdapter {
     return [];
   }
 
-  async writeBackInvoiceUrls(
-    invoiceNo: string,
-    htmlUrl: string,
-    _pdfUrl: string,
-  ): Promise<void> {
-    console.log("[MockFrontend] writeBackInvoiceUrls:", invoiceNo, htmlUrl);
+  async writeBackInvoice(invoice: Invoice): Promise<void> {
+    console.log(
+      "[MockFrontend] writeBackInvoice:",
+      invoice.invoice_no,
+      invoice.invoice_type,
+    );
   }
 
   async getExchangeRates(): Promise<ExchangeRateRow[]> {
@@ -71,9 +70,17 @@ const MAIN_TABLE_FIELDS = {
   CUSTOMER_NAME: ["Customer Name", "联系人姓名"],
   WECHAT_NAME: ["WeChat Name", "客户微信名称"],
   LINKED_SERVICE: ["Associated Service ID", "关联服务ID"],
-  INVOICE_ID: ["Final Billing Number", "账单编号", "账单ID"],
-  HTML_URL: ["Final HTML link", "HTML link", "HTML链接"],
-  PDF_URL: ["Final PDF link", "PDF link", "PDF链接"],
+  // Consultant-invoice write-back targets
+  BILL_NUMBER: ["Bill Number", "账单编号"],
+  HTML_LINK: ["HTML link", "HTML链接"],
+  PDF_LINK: ["PDF link", "PDF链接"],
+  ADD_VAT: ["Add:VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
+  LESS_EWT: ["Less:EWT(2%)", "Less:EWT", "EWT Amount", "预扣税"],
+  // Final-payment write-back targets
+  FINAL_BILL_NUMBER: ["Final Billing Number", "Final Bill Number"],
+  FINAL_HTML_LINK: ["Final HTML link"],
+  FINAL_PDF_LINK: ["Final PDF link"],
+  // Other main-table reads
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
   TOTAL_DEDUCTION_AMOUNT: ["Total Deduction Amount", "总扣款金额"],
@@ -441,9 +448,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
 
           const item: SourceItem = {
             record_id: serviceRecordId,
-            bill_to: customerName,
-            customer_name: customerName,
-            company_name: "",
+            bill_to: companyNameVal || contactName || wechatName,
+            customer_name: contactName || wechatName,
+            company_name: companyNameVal,
             service: String(
               firstValue(svcFields, SERVICE_TABLE_FIELDS.SERVICE) ?? "",
             ),
@@ -629,21 +636,15 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
     return rows;
   }
 
-  async writeBackInvoiceUrls(
-    invoiceNo: string,
-    htmlUrl: string,
-    pdfUrl: string,
-  ): Promise<void> {
+  async writeBackInvoice(invoice: Invoice): Promise<void> {
     const { table } = await this.getMainTable();
 
-    // Use stored main record IDs (from getSelectedRecords)
     const recordIds = this._mainRecordIds;
     if (recordIds.length === 0) {
       console.warn("[RealFrontend] No main record IDs stored for write-back");
       return;
     }
 
-    // Get field meta to find write-back fields
     const fieldMetaList = await table.getFieldMetaList();
     const fieldByName = new Map(fieldMetaList.map((f) => [f.name, f.id]));
 
@@ -652,40 +653,37 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       JSON.stringify(fieldMetaList.map((f) => f.name)),
     );
 
-    // Write-back targets (English primary, Chinese fallback)
-    const invoiceIdFieldId = firstId(fieldByName, MAIN_TABLE_FIELDS.INVOICE_ID);
-    const htmlUrlFieldId = firstId(fieldByName, MAIN_TABLE_FIELDS.HTML_URL);
-    const pdfUrlFieldId = firstId(fieldByName, MAIN_TABLE_FIELDS.PDF_URL);
+    // Build the field → value map based on invoice_type.
+    const updates: Record<string, unknown> = {};
+    const put = (aliases: readonly string[], value: unknown): void => {
+      const id = firstId(fieldByName, aliases);
+      if (id) updates[id] = value;
+    };
 
-    console.log("[RealFrontend] Write-back field IDs:", {
-      invoiceId: invoiceIdFieldId,
-      htmlUrl: htmlUrlFieldId,
-      pdfUrl: pdfUrlFieldId,
-    });
+    if (invoice.invoice_type === "final_payment") {
+      put(MAIN_TABLE_FIELDS.FINAL_BILL_NUMBER, invoice.invoice_no);
+      put(MAIN_TABLE_FIELDS.FINAL_HTML_LINK, invoice.html_url ?? "");
+      put(MAIN_TABLE_FIELDS.FINAL_PDF_LINK, invoice.pdf_url ?? "");
+    } else {
+      put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
+      put(MAIN_TABLE_FIELDS.HTML_LINK, invoice.html_url ?? "");
+      put(MAIN_TABLE_FIELDS.PDF_LINK, invoice.pdf_url ?? "");
+      put(MAIN_TABLE_FIELDS.ADD_VAT, invoice.vat_amount);
+      put(MAIN_TABLE_FIELDS.LESS_EWT, invoice.ewt_amount ?? 0);
+    }
 
-    if (!invoiceIdFieldId && !htmlUrlFieldId && !pdfUrlFieldId) {
+    console.log("[RealFrontend] Write-back targets:", Object.keys(updates));
+
+    if (Object.keys(updates).length === 0) {
       console.warn(
-        "[RealFrontend] No write-back fields found (账单编号, HTML链接, PDF链接). Skipping.",
+        "[RealFrontend] No matching write-back fields on main table. Skipping.",
       );
       return;
     }
 
     for (const recordId of recordIds) {
       try {
-        const fields: Record<string, unknown> = {};
-
-        if (invoiceIdFieldId) {
-          fields[invoiceIdFieldId] = invoiceNo;
-        }
-        if (htmlUrlFieldId) {
-          fields[htmlUrlFieldId] = htmlUrl;
-        }
-        if (pdfUrlFieldId) {
-          fields[pdfUrlFieldId] = pdfUrl;
-        }
-
-        console.log("[RealFrontend] Writing to record:", recordId, fields);
-        await table.setRecord(recordId, { fields });
+        await table.setRecord(recordId, { fields: updates });
         console.log("[RealFrontend] Write-back success for:", recordId);
       } catch (err) {
         console.error(
@@ -697,8 +695,8 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
     }
 
     console.log(
-      "[RealFrontend] writeBackInvoiceUrls complete:",
-      invoiceNo,
+      "[RealFrontend] writeBackInvoice complete:",
+      invoice.invoice_no,
       "updated",
       recordIds.length,
       "main records",

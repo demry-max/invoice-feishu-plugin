@@ -107,6 +107,11 @@ export function renderByTemplate(
   const css = getCss(theme.cssFile);
   const logoDataUri = getLogo(theme.logoFile);
 
+  // Discount column is only shown when at least one line has a non-zero discount.
+  const showDiscount = invoice.items.some(
+    (it) => (it.discount_percent ?? 0) > 0,
+  );
+
   const itemsHtml = invoice.items
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(
@@ -116,7 +121,11 @@ export function renderByTemplate(
         <td>${escapeHtml(item.service_period)}</td>
         <td class="text-right">${formatAmount(item.price, invoice.currency)}</td>
         <td>${item.qty}</td>
-        <td>${item.discount_percent > 0 ? item.discount_percent + "%" : "-"}</td>
+        ${
+          showDiscount
+            ? `<td>${item.discount_percent > 0 ? item.discount_percent + "%" : "-"}</td>`
+            : ""
+        }
         <td class="text-right">${formatAmount(item.line_total, invoice.currency)}</td>
         <td class="text-left">${escapeHtml(item.chinese_translation)}</td>
         <td class="text-left">${escapeHtml(item.remark)}</td>
@@ -162,7 +171,11 @@ export function renderByTemplate(
     <div class="invoice-meta">
       <div class="bill-to">
         <div class="bill-to-label">BILL TO</div>
-        <div class="bill-to-value">${escapeHtml(invoice.bill_to)}</div>
+        <div class="bill-to-value">${[invoice.company_name, invoice.bill_to]
+          .map((v) => (v ?? "").trim())
+          .filter((v, i, a) => v && a.indexOf(v) === i)
+          .map((v) => escapeHtml(v))
+          .join("<br/>")}</div>
       </div>
       <div class="invoice-badges">
         <div class="badge">
@@ -184,7 +197,7 @@ export function renderByTemplate(
           <th>服务期限<span class="th-en">Service Period</span></th>
           <th>价格<span class="th-en">Price</span></th>
           <th>数量<span class="th-en">Qty</span></th>
-          <th>折扣(%)<span class="th-en">Discount(%)</span></th>
+          ${showDiscount ? `<th>折扣(%)<span class="th-en">Discount(%)</span></th>` : ""}
           <th>合计<span class="th-en">Total</span></th>
           <th>中文翻译<span class="th-en">Chinese Translation</span></th>
           <th>备注<span class="th-en">Note</span></th>
@@ -260,19 +273,10 @@ function buildTotalsHtml(invoice: Invoice): string {
     const rows: string[] = [];
     rows.push(`
         <tr>
-          <td class="label">Total (Subtotal)</td>
+          <td class="label">Total</td>
           <td class="value">${formatAmount(invoice.subtotal, c)}</td>
         </tr>`);
-    if (
-      typeof invoice.taxable_subtotal === "number" &&
-      invoice.taxable_subtotal !== invoice.subtotal
-    ) {
-      rows.push(`
-        <tr class="muted">
-          <td class="label">Taxable Subtotal</td>
-          <td class="value">${formatAmount(invoice.taxable_subtotal, c)}</td>
-        </tr>`);
-    }
+    // VAT row appears only when rate > 0 (i.e. tax_mode = tax_included).
     if (invoice.vat_rate > 0) {
       rows.push(`
         <tr>
@@ -280,10 +284,11 @@ function buildTotalsHtml(invoice: Invoice): string {
           <td class="value">+${formatAmount(invoice.vat_amount, c)}</td>
         </tr>`);
     }
-    if ((invoice.ewt_amount ?? 0) > 0) {
+    // EWT row only for Starlight (feilong 菲龙咨询 skips EWT entirely).
+    if ((invoice.ewt_rate ?? 0) > 0) {
       rows.push(`
         <tr>
-          <td class="label">Less: EWT(${invoice.ewt_rate ?? 2}%)</td>
+          <td class="label">Less: EWT(${invoice.ewt_rate}%)</td>
           <td class="value">−${formatAmount(invoice.ewt_amount ?? 0, c)}</td>
         </tr>`);
     }

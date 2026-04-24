@@ -35,6 +35,8 @@ export const ItemsTable: React.FC<Props> = ({ sourceItems, invoiceItems, currenc
     return <div className="empty-state">暂无数据，请先加载选中记录</div>;
   }
 
+  const showDiscount = rows.some((r) => (r.discount_percent ?? 0) > 0);
+
   return (
     <div className="table-wrapper">
       <table className="items-table">
@@ -60,11 +62,13 @@ export const ItemsTable: React.FC<Props> = ({ sourceItems, invoiceItems, currenc
               <br />
               <span className="th-en">Qty</span>
             </th>
-            <th>
-              折扣(%)
-              <br />
-              <span className="th-en">Discount(%)</span>
-            </th>
+            {showDiscount && (
+              <th>
+                折扣(%)
+                <br />
+                <span className="th-en">Discount(%)</span>
+              </th>
+            )}
             <th>
               合计
               <br />
@@ -89,7 +93,9 @@ export const ItemsTable: React.FC<Props> = ({ sourceItems, invoiceItems, currenc
               <td>{row.service_period}</td>
               <td className="text-right">{formatAmount(row.price, currency)}</td>
               <td>{row.qty}</td>
-              <td>{row.discount_percent > 0 ? `${row.discount_percent}%` : '-'}</td>
+              {showDiscount && (
+                <td>{row.discount_percent > 0 ? `${row.discount_percent}%` : '-'}</td>
+              )}
               <td className="text-right">{formatAmount(row.line_total, currency)}</td>
               <td className="text-left">{row.chinese_translation}</td>
               <td className="text-left">{row.remark}</td>

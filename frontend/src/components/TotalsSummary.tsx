@@ -57,38 +57,38 @@ export const TotalsSummary: React.FC<Props> = ({ preview, currency }) => {
     );
   }
 
-  // Consultant invoice (with tax_eligible, VAT, EWT)
+  // Consultant invoice — totals reflect tax_mode + template rules:
+  //   tax_excluded (不含税)   → only Total + Grand Total (equal).
+  //   tax_included (含税)     → Total + ADD:VAT + [Less:EWT if Starlight] + Grand Total.
   if (preview.invoice_type === "consultant") {
+    const showVat = preview.vat_rate > 0;
+    const showEwt = (preview.ewt_rate ?? 0) > 0;
     return (
       <div className="totals-summary">
         <div className="totals-row">
-          <span className="totals-label">Total (subtotal)</span>
+          <span className="totals-label">Total</span>
           <span className="totals-value">
             {formatAmount(preview.subtotal, cur)}
           </span>
         </div>
-        {typeof preview.taxable_subtotal === "number" && (
-          <div className="totals-row" style={{ fontSize: "12px", color: "#999" }}>
-            <span className="totals-label">Taxable subtotal</span>
+        {showVat && (
+          <div className="totals-row">
+            <span className="totals-label">ADD: VAT({preview.vat_rate}%)</span>
             <span className="totals-value">
-              {formatAmount(preview.taxable_subtotal, cur)}
+              +{formatAmount(preview.vat_amount, cur)}
             </span>
           </div>
         )}
-        <div className="totals-row">
-          <span className="totals-label">ADD: VAT({preview.vat_rate}%)</span>
-          <span className="totals-value">
-            +{formatAmount(preview.vat_amount, cur)}
-          </span>
-        </div>
-        <div className="totals-row">
-          <span className="totals-label">
-            Less: EWT({preview.ewt_rate ?? 2}%)
-          </span>
-          <span className="totals-value">
-            −{formatAmount(preview.ewt_amount ?? 0, cur)}
-          </span>
-        </div>
+        {showEwt && (
+          <div className="totals-row">
+            <span className="totals-label">
+              Less: EWT({preview.ewt_rate}%)
+            </span>
+            <span className="totals-value">
+              −{formatAmount(preview.ewt_amount ?? 0, cur)}
+            </span>
+          </div>
+        )}
         <div className="totals-row grand-total">
           <span className="totals-label">Grand Total</span>
           <span className="totals-value">
