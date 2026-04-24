@@ -30,7 +30,7 @@ export const BillToSection: React.FC<Props> = ({
           <input type="text" value={billTo} onChange={(e) => onBillToChange(e.target.value)} />
         </div>
         <div className="form-group">
-          <label>公司名称 (发票抬头)</label>
+          <label>公司名称 (发票抬头) / Company Name</label>
           <input
             type="text"
             value={companyName}
@@ -38,7 +38,7 @@ export const BillToSection: React.FC<Props> = ({
           />
         </div>
         <div className="form-group">
-          <label>账单日期</label>
+          <label>账单日期 / Invoice Date</label>
           <input
             type="date"
             value={invoiceDate}
@@ -46,7 +46,7 @@ export const BillToSection: React.FC<Props> = ({
           />
         </div>
         <div className="form-group">
-          <label>币种符号</label>
+          <label>币种符号 / Currency</label>
           <select value={currency} onChange={(e) => onCurrencyChange(e.target.value)}>
             <option value="¥">¥ (人民币)</option>
             <option value="$">$ (美元)</option>

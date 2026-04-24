@@ -47,7 +47,7 @@ export const ItemsTable: React.FC<Props> = ({
       }));
 
   if (rows.length === 0) {
-    return <div className="empty-state">暂无数据，请先加载选中记录</div>;
+    return <div className="empty-state">暂无数据 / No data. Please select records first.</div>;
   }
 
   const showDiscount = rows.some((r) => (r.discount_percent ?? 0) > 0);

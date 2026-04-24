@@ -128,22 +128,44 @@ const App: React.FC = () => {
     "",
   );
 
-  // Source currency from main record (first item)
-  const sourceCurrency = useMemo(
+  // Source currencies from main record (first item)
+  const billCurrency = useMemo(
     () => sourceItems[0]?.source_currency?.toUpperCase() || "",
     [sourceItems],
   );
+  const finalCurrency = useMemo(
+    () => sourceItems[0]?.final_currency?.toUpperCase() || "",
+    [sourceItems],
+  );
 
-  // Computed exchange rate for final-payment + display currency
-  const exchangeRate = useMemo(() => {
+  // Two-rate model for final_payment (per 账单调整需求 Copy.docx):
+  //   rateBill  — Bill Currency       → display (Amount Billed / Paid / Refunded / Deductible)
+  //   rateFinal — Final bill currency → display (Actual Amount Incurred)
+  const rateBill = useMemo(() => {
     if (invoiceType !== "final_payment" || !displayCurrency) return 1;
-    return findExchangeRate(
-      exchangeRates,
-      sourceCurrency,
-      displayCurrency,
-      invoiceDate,
-    );
-  }, [invoiceType, displayCurrency, sourceCurrency, invoiceDate, exchangeRates]);
+    if (!billCurrency || billCurrency === displayCurrency) return 1;
+    return findExchangeRate(exchangeRates, billCurrency, displayCurrency, invoiceDate);
+  }, [invoiceType, displayCurrency, billCurrency, invoiceDate, exchangeRates]);
+
+  const rateFinal = useMemo(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return 1;
+    if (!finalCurrency || finalCurrency === displayCurrency) return 1;
+    return findExchangeRate(exchangeRates, finalCurrency, displayCurrency, invoiceDate);
+  }, [invoiceType, displayCurrency, finalCurrency, invoiceDate, exchangeRates]);
+
+  // True when a rate was needed but the table yielded 1 (no matching row).
+  const missingBillRate =
+    invoiceType === "final_payment" &&
+    !!displayCurrency &&
+    billCurrency !== "" &&
+    billCurrency !== displayCurrency &&
+    rateBill === 1;
+  const missingFinalRate =
+    invoiceType === "final_payment" &&
+    !!displayCurrency &&
+    finalCurrency !== "" &&
+    finalCurrency !== displayCurrency &&
+    rateFinal === 1;
 
   useEffect(() => {
     const newConfig = COMPANY_CONFIGS[templateId] ?? COMPANY_CONFIGS.feilong;
@@ -198,7 +220,8 @@ const App: React.FC = () => {
     invoiceType,
     vatRatePercent,
     displayCurrency,
-    exchangeRate,
+    rateBill,
+    rateFinal,
     templateId,
     bankAccountId,
     billTo,
@@ -215,7 +238,8 @@ const App: React.FC = () => {
       invoiceType === "final_payment" && displayCurrency
         ? displayCurrency
         : undefined,
-    exchangeRate: invoiceType === "final_payment" ? exchangeRate : undefined,
+    exchangeRateBill: invoiceType === "final_payment" ? rateBill : undefined,
+    exchangeRateFinal: invoiceType === "final_payment" ? rateFinal : undefined,
     invoiceDate,
   };
 
@@ -288,7 +312,7 @@ const App: React.FC = () => {
               cursor: "pointer",
             }}
           >
-            忽略并继续生成新账单
+            忽略并继续生成新账单 / Dismiss and Create New
           </button>
         </div>
       )}
@@ -301,11 +325,14 @@ const App: React.FC = () => {
             onClick={loadSourceItems}
             disabled={loading}
           >
-            {loading ? "加载中..." : "加载选中记录"}
+            {loading ? "加载中... / Loading..." : "加载选中记录 / Load Selected"}
           </button>
         </div>
         {sourceItems.length > 0 && (
-          <p className="record-count">已加载 {sourceItems.length} 条记录</p>
+          <p className="record-count">
+            已加载 {sourceItems.length} 条记录 / {sourceItems.length} record
+            {sourceItems.length > 1 ? "s" : ""} loaded
+          </p>
         )}
       </div>
 
@@ -427,9 +454,9 @@ const App: React.FC = () => {
                     }}
                   >
                     展示币种 / Display Currency
-                    {sourceCurrency && (
+                    {(billCurrency || finalCurrency) && (
                       <span style={{ marginLeft: 8, color: "#999" }}>
-                        (源币种: {sourceCurrency})
+                        (Bill: {billCurrency || "—"} · Final: {finalCurrency || "—"})
                       </span>
                     )}
                   </label>
@@ -438,7 +465,7 @@ const App: React.FC = () => {
                       className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
                       onClick={() => setDisplayCurrency("")}
                     >
-                      原始
+                      原始 / Original
                     </button>
                     {CURRENCY_OPTIONS.map((c) => (
                       <button
@@ -450,14 +477,35 @@ const App: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  {displayCurrency && sourceCurrency && (
-                    <p style={{ fontSize: "12px", color: "#666", marginTop: 6 }}>
-                      汇率: 1 {sourceCurrency} = {exchangeRate.toFixed(6)}{" "}
-                      {displayCurrency}{" "}
-                      {exchangeRate === 1 && sourceCurrency !== displayCurrency
-                        ? "(未在汇率表中找到匹配行)"
-                        : ""}
-                    </p>
+                  {displayCurrency && (
+                    <div style={{ fontSize: "12px", color: "#666", marginTop: 6 }}>
+                      {billCurrency && billCurrency !== displayCurrency && (
+                        <div>
+                          Bill rate: 1 {billCurrency} = {rateBill.toFixed(6)}{" "}
+                          {displayCurrency}{" "}
+                          {missingBillRate && (
+                            <span style={{ color: "#b85c00" }}>
+                              (汇率表中无 {billCurrency}→{displayCurrency} 行)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {finalCurrency && finalCurrency !== displayCurrency && (
+                        <div>
+                          Final rate: 1 {finalCurrency} = {rateFinal.toFixed(6)}{" "}
+                          {displayCurrency}{" "}
+                          {missingFinalRate && (
+                            <span style={{ color: "#b85c00" }}>
+                              (汇率表中无 {finalCurrency}→{displayCurrency} 行)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {billCurrency === displayCurrency &&
+                        finalCurrency === displayCurrency && (
+                          <div>源币种与展示币种一致，无需换算</div>
+                        )}
+                    </div>
                   )}
                 </div>
               )}
@@ -488,7 +536,7 @@ const App: React.FC = () => {
                 className="btn btn-text"
                 onClick={() => setShowCompanyEdit(!showCompanyEdit)}
               >
-                {showCompanyEdit ? "收起" : "编辑"}
+                {showCompanyEdit ? "收起 / Collapse" : "编辑 / Edit"}
               </button>
             </div>
             {!showCompanyEdit && (
@@ -522,7 +570,7 @@ const App: React.FC = () => {
               onClick={handleGenerate}
               disabled={loading || !preview}
             >
-              {loading ? "生成中..." : "生成正式账单"}
+              {loading ? "生成中... / Generating..." : "生成正式账单 / Generate Invoice"}
             </button>
           </div>
         </>
@@ -533,7 +581,7 @@ const App: React.FC = () => {
       {result && (
         <div className="actions">
           <button className="btn btn-secondary" onClick={clearResult}>
-            生成新账单
+            生成新账单 / Create New Invoice
           </button>
         </div>
       )}

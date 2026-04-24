@@ -84,7 +84,10 @@ function escapeHtml(str: string): string {
  * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
  */
 function getTaxNote(taxMode: TaxMode): string {
-  if (taxMode === "tax_excluded") {
+  // New semantics (per 账单调整需求 Copy.docx):
+  //   tax_excluded (不含税) → "上述报价不含税;如需开票…"
+  //   tax_included (含税)   → "上述报价含税,可开具增值税专用发票。"
+  if (taxMode === "tax_included") {
     return "上述报价含税,可开具增值税专用发票。";
   }
   return "注:上述报价不含税;如需开票,可加收1%费用开具增值税普通发票,或加收3%费用开具增值税专用发票。";

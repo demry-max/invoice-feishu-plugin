@@ -88,13 +88,10 @@ const MAIN_TABLE_FIELDS = {
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
   TOTAL_DEDUCTION_AMOUNT: ["Total Deduction Amount", "总扣款金额"],
-  BILL_CURRENCY: [
-    "Bill Currency",
-    "Final bill currency",
-    "Currency",
-    "币种",
-    "账单币种",
-  ],
+  // Primary "billed-side" currency (covers Amount Billed / Paid / Refunded / Deductible)
+  BILL_CURRENCY: ["Bill Currency", "Currency", "币种", "账单币种"],
+  // "Final" currency (covers Actual Amount Incurred)
+  FINAL_BILL_CURRENCY: ["Final bill currency", "Final Bill Currency"],
 } as const;
 
 const EXCHANGE_RATE_TABLE_NAMES = [
@@ -505,6 +502,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             source_currency: String(
               firstValue(mainFields, MAIN_TABLE_FIELDS.BILL_CURRENCY) ?? "",
             ).trim() || undefined,
+            final_currency: String(
+              firstValue(mainFields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
+            ).trim() || undefined,
           };
 
           allItems.push(item);
@@ -601,6 +601,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         ),
         source_currency: String(
           firstValue(fields, MAIN_TABLE_FIELDS.BILL_CURRENCY) ?? "",
+        ).trim() || undefined,
+        final_currency: String(
+          firstValue(fields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
         ).trim() || undefined,
       });
     }
@@ -711,6 +714,7 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       );
     } else {
       put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
+      put(MAIN_TABLE_FIELDS.BILLING_DATE, invoice.invoice_date);
       put(MAIN_TABLE_FIELDS.HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.PDF_LINK, invoice.pdf_url ?? "");
       put(MAIN_TABLE_FIELDS.ADD_VAT, invoice.vat_amount);
