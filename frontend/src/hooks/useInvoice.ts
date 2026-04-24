@@ -10,8 +10,13 @@ import type {
   VatRatePercent,
   DisplayCurrency,
   ExchangeRateRow,
+  Invoice,
 } from "../types";
-import { previewInvoice, generateInvoice } from "../services/api";
+import {
+  previewInvoice,
+  generateInvoice,
+  fetchInvoicesForSourceRecord,
+} from "../services/api";
 import { createFrontendAdapter } from "../adapters/feishu-adapter";
 
 const adapter = createFrontendAdapter();
@@ -28,6 +33,7 @@ export interface UseInvoiceState {
   loading: boolean;
   error: string | null;
   exchangeRates: ExchangeRateRow[];
+  existingInvoices: Invoice[];
 }
 
 export interface PreviewOptions {
@@ -46,7 +52,34 @@ export function useInvoice() {
     loading: false,
     error: null,
     exchangeRates: [],
+    existingInvoices: [],
   });
+
+  const refreshExistingInvoices = useCallback(async () => {
+    const mainIds = adapter.getMainRecordIds();
+    if (mainIds.length === 0) {
+      setState((s) => ({ ...s, existingInvoices: [] }));
+      return;
+    }
+    try {
+      const lists = await Promise.all(
+        mainIds.map((id) =>
+          fetchInvoicesForSourceRecord(id).catch(() => [] as Invoice[]),
+        ),
+      );
+      const seen = new Set<string>();
+      const deduped: Invoice[] = [];
+      for (const inv of lists.flat()) {
+        if (!seen.has(inv.invoice_no)) {
+          seen.add(inv.invoice_no);
+          deduped.push(inv);
+        }
+      }
+      setState((s) => ({ ...s, existingInvoices: deduped }));
+    } catch (err) {
+      console.warn("[useInvoice] refreshExistingInvoices failed:", err);
+    }
+  }, []);
 
   const loadSourceItems = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
@@ -64,10 +97,11 @@ export function useInvoice() {
         exchangeRates: rates,
         loading: false,
       }));
+      void refreshExistingInvoices();
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: String(err) }));
     }
-  }, []);
+  }, [refreshExistingInvoices]);
 
   const doPreview = useCallback(
     async (
@@ -101,7 +135,7 @@ export function useInvoice() {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
       }
     },
-    [state.sourceItems],
+    [state.sourceItems, refreshExistingInvoices],
   );
 
   const doGenerate = useCallback(
@@ -141,11 +175,12 @@ export function useInvoice() {
           .catch((writeErr) =>
             console.error("[useInvoice] Write-back failed:", writeErr),
           );
+        void refreshExistingInvoices();
       } catch (err) {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
       }
     },
-    [state.sourceItems],
+    [state.sourceItems, refreshExistingInvoices],
   );
 
   const clearResult = useCallback(() => {
@@ -158,5 +193,6 @@ export function useInvoice() {
     doPreview,
     doGenerate,
     clearResult,
+    refreshExistingInvoices,
   };
 }

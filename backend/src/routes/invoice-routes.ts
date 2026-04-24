@@ -6,6 +6,7 @@ import {
   handleGetHtml,
   handleGetPdf,
   handleGetMockItems,
+  handleListBySource,
 } from "../controllers/invoice-controller";
 import { getAllBankAccounts } from "../utils/bank-accounts";
 import type { ApiResponse, BankAccount } from "../types";
@@ -14,6 +15,7 @@ const router = Router();
 
 router.post("/invoices/preview", handlePreview);
 router.post("/invoices/generate", handleGenerate);
+router.get("/invoices/by-source/:recordId", handleListBySource);
 router.get("/invoices/:invoiceNo/html", handleGetHtml);
 router.get("/invoices/:invoiceNo/pdf", handleGetPdf);
 router.get("/mock/source-items", handleGetMockItems);
