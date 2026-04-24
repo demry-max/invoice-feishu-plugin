@@ -711,9 +711,17 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       if (id) updates[id] = value;
     };
 
+    // Bitable Date fields expect a millisecond timestamp, not a string.
+    const dateMs = (iso: string): number => {
+      // Use noon UTC to avoid off-by-one in local time zones
+      const d = new Date(`${iso}T12:00:00Z`);
+      const t = d.getTime();
+      return Number.isNaN(t) ? Date.now() : t;
+    };
+
     if (invoice.invoice_type === "final_payment") {
       put(MAIN_TABLE_FIELDS.FINAL_BILL_NUMBER, invoice.invoice_no);
-      put(MAIN_TABLE_FIELDS.FINAL_BILLING_DATE, invoice.invoice_date);
+      put(MAIN_TABLE_FIELDS.FINAL_BILLING_DATE, dateMs(invoice.invoice_date));
       put(MAIN_TABLE_FIELDS.FINAL_HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.FINAL_PDF_LINK, invoice.pdf_url ?? "");
       put(
@@ -722,7 +730,7 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       );
     } else {
       put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
-      put(MAIN_TABLE_FIELDS.BILLING_DATE, invoice.invoice_date);
+      put(MAIN_TABLE_FIELDS.BILLING_DATE, dateMs(invoice.invoice_date));
       put(MAIN_TABLE_FIELDS.HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.PDF_LINK, invoice.pdf_url ?? "");
       put(MAIN_TABLE_FIELDS.ADD_VAT, invoice.vat_amount);
