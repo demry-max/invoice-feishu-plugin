@@ -15,43 +15,31 @@ export const TotalsSummary: React.FC<Props> = ({ preview, currency }) => {
     : currency;
 
   if (preview.invoice_type === "final_payment") {
+    const totalBalance = preview.total_balance ?? 0;
+    const refunded = preview.amount_refunded ?? 0;
+    const deductible = preview.total_deduction_amount ?? 0;
+    const finalBalance = preview.final_balance ?? preview.grand_total;
     return (
       <div className="totals-summary">
         <div className="totals-row">
-          <span className="totals-label">Actual Amount (小计)</span>
-          <span className="totals-value">
-            {formatAmount(preview.subtotal, cur)}
-          </span>
+          <span className="totals-label">Total Balance</span>
+          <span className="totals-value">{formatAmount(totalBalance, cur)}</span>
         </div>
-        {typeof preview.amount_paid_total === "number" && (
+        {refunded > 0 && (
           <div className="totals-row">
-            <span className="totals-label">Less: Amount Paid</span>
-            <span className="totals-value">
-              −{formatAmount(preview.amount_paid_total, cur)}
-            </span>
+            <span className="totals-label">Amount Refunded</span>
+            <span className="totals-value">{formatAmount(refunded, cur)}</span>
           </div>
         )}
-        {typeof preview.total_deduction_amount === "number" && (
+        {deductible > 0 && (
           <div className="totals-row">
-            <span className="totals-label">Less: Total Deduction</span>
-            <span className="totals-value">
-              −{formatAmount(preview.total_deduction_amount, cur)}
-            </span>
-          </div>
-        )}
-        {typeof preview.amount_refunded === "number" && (
-          <div className="totals-row">
-            <span className="totals-label">Add: Amount Refunded</span>
-            <span className="totals-value">
-              +{formatAmount(preview.amount_refunded, cur)}
-            </span>
+            <span className="totals-label">Deductible Amount</span>
+            <span className="totals-value">{formatAmount(deductible, cur)}</span>
           </div>
         )}
         <div className="totals-row grand-total">
-          <span className="totals-label">Grand Total (尾款)</span>
-          <span className="totals-value">
-            {formatAmount(preview.grand_total, cur)}
-          </span>
+          <span className="totals-label">Final Balance</span>
+          <span className="totals-value">{formatAmount(finalBalance, cur)}</span>
         </div>
       </div>
     );

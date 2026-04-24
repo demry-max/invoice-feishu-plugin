@@ -18,7 +18,8 @@ import {
   calcVat,
   calcEwt,
   calcConsultantGrandTotal,
-  calcFinalPaymentGrandTotal,
+  calcTotalBalance,
+  calcFinalBalance,
   aggregateFinalPaymentContext,
   DEFAULT_VAT_RATE,
   EWT_RATE,
@@ -131,26 +132,27 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
   if (invoiceType === "final_payment") {
     const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    const grandTotal = calcFinalPaymentGrandTotal(
-      subtotal,
-      amountPaidTotal * exchangeRate,
-      totalDeductionAmount * exchangeRate,
-      amountRefunded * exchangeRate,
-    );
+    const paidTotal = amountPaidTotal * exchangeRate;
+    const refunded = amountRefunded * exchangeRate;
+    const deductible = totalDeductionAmount * exchangeRate;
+    const totalBalance = calcTotalBalance(items);
+    const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
     return {
       items,
       subtotal,
       vat_rate: 0,
       vat_amount: 0,
-      grand_total: grandTotal,
+      grand_total: finalBalance,
       currency,
       tax_mode: taxMode,
       invoice_type: invoiceType,
-      amount_paid_total: amountPaidTotal * exchangeRate,
-      amount_refunded: amountRefunded * exchangeRate,
-      total_deduction_amount: totalDeductionAmount * exchangeRate,
+      amount_paid_total: paidTotal,
+      amount_refunded: refunded,
+      total_deduction_amount: deductible,
       exchange_rate: exchangeRate,
       display_currency: req.display_currency,
+      total_balance: totalBalance,
+      final_balance: finalBalance,
     };
   }
 
@@ -211,12 +213,11 @@ export async function generateInvoice(
   if (invoiceType === "final_payment") {
     const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    const grandTotal = calcFinalPaymentGrandTotal(
-      subtotal,
-      amountPaidTotal * exchangeRate,
-      totalDeductionAmount * exchangeRate,
-      amountRefunded * exchangeRate,
-    );
+    const paidTotal = amountPaidTotal * exchangeRate;
+    const refunded = amountRefunded * exchangeRate;
+    const deductible = totalDeductionAmount * exchangeRate;
+    const totalBalance = calcTotalBalance(items);
+    const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
     invoice = {
       invoice_no: invoiceNo,
       company_name: req.company_name,
@@ -225,7 +226,7 @@ export async function generateInvoice(
       subtotal,
       vat_rate: 0,
       vat_amount: 0,
-      grand_total: grandTotal,
+      grand_total: finalBalance,
       currency,
       tax_mode: taxMode,
       template_id: templateId,
@@ -238,11 +239,15 @@ export async function generateInvoice(
       status: "generated",
       items,
       invoice_type: invoiceType,
-      amount_paid_total: amountPaidTotal * exchangeRate,
-      amount_refunded: amountRefunded * exchangeRate,
-      total_deduction_amount: totalDeductionAmount * exchangeRate,
+      amount_paid_total: paidTotal,
+      amount_refunded: refunded,
+      total_deduction_amount: deductible,
       exchange_rate: exchangeRate,
       display_currency: req.display_currency,
+      total_balance: totalBalance,
+      final_balance: finalBalance,
+      client_name: req.bill_to,
+      client_company: req.company_name,
     };
   } else {
     const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
