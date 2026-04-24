@@ -115,7 +115,7 @@ const App: React.FC = () => {
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().split("T")[0],
   );
-  const [currency, setCurrency] = useState("¥");
+  // Currency symbol is now derived — see `currency` useMemo below.
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
   const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
   const [bankAccountId, setBankAccountId] = useState("");
@@ -180,9 +180,32 @@ const App: React.FC = () => {
       // Company name input captures the invoice heading line
       if (!companyName && first.company_name)
         setCompanyName(first.company_name);
-      if (first.currency) setCurrency(first.currency);
     }
   }, [sourceItems]);
+
+  // Currency symbol is derived:
+  // - final_payment with chosen display currency → its symbol (¥ / $ / ₱)
+  // - otherwise → symbol of the source Bill Currency (fallback ¥)
+  const currency = useMemo(() => {
+    const symbolFor = (code: string): string => {
+      switch (code.toUpperCase()) {
+        case "CNY":
+          return "¥";
+        case "USD":
+          return "$";
+        case "PHP":
+          return "₱";
+        case "EUR":
+          return "€";
+        default:
+          return "";
+      }
+    };
+    if (invoiceType === "final_payment" && displayCurrency) {
+      return symbolFor(displayCurrency) || "¥";
+    }
+    return symbolFor(billCurrency) || "¥";
+  }, [invoiceType, displayCurrency, billCurrency]);
 
   // Auto-load on mount + on selection change in Bitable
   useEffect(() => {
@@ -361,11 +384,9 @@ const App: React.FC = () => {
             billTo={billTo}
             companyName={companyName}
             invoiceDate={invoiceDate}
-            currency={currency}
             onBillToChange={setBillTo}
             onCompanyNameChange={setCompanyName}
             onInvoiceDateChange={setInvoiceDate}
-            onCurrencyChange={setCurrency}
           />
 
           <div className="section">
