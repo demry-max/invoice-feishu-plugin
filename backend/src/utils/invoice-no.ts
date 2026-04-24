@@ -14,12 +14,18 @@ function getMonthKey(): string {
   return `${year}${month}`;
 }
 
-export function generateInvoiceNo(): string {
+export function generateInvoiceNo(
+  seedIfUnseen?: (monthKey: string) => number,
+): string {
   const key = getMonthKey();
-  const current = counters.get(key) || 0;
+  let current = counters.get(key);
+  if (current == null) {
+    current = seedIfUnseen ? (seedIfUnseen(key) ?? 0) : 0;
+    counters.set(key, current);
+  }
   const next = current + 1;
   counters.set(key, next);
-  return `${key}-${String(next).padStart(5, '0')}`;
+  return `${key}-${String(next).padStart(5, "0")}`;
 }
 
 /** 重置计数器（测试用） */

@@ -180,7 +180,9 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
 export async function generateInvoice(
   req: GenerateRequest,
 ): Promise<GenerateResponse> {
-  const invoiceNo = generateInvoiceNo();
+  const invoiceNo = generateInvoiceNo((monthKey) =>
+    invoiceStore.getMaxSuffixForMonth(monthKey),
+  );
   const invoiceDate =
     req.invoice_date || new Date().toISOString().split("T")[0];
   // Default tax mode to tax_included (see previewInvoice for semantics).

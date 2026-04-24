@@ -29,6 +29,11 @@ export interface InvoiceStore {
   insert(invoice: Invoice): void;
   get(invoiceNo: string): Invoice | undefined;
   listBySourceRecord(recordId: string): Invoice[];
+  /**
+   * Return the largest numeric suffix among invoice numbers matching
+   * `${monthKey}-*`. Used to seed the in-memory counter across restarts.
+   */
+  getMaxSuffixForMonth(monthKey: string): number;
   close(): void;
 }
 
@@ -56,6 +61,10 @@ export function openStore(dbPath: string): InvoiceStore {
 
   const listBySourceStmt = db.prepare(
     `SELECT invoice_json FROM invoices WHERE source_record_ids LIKE ? ORDER BY created_at DESC`,
+  );
+
+  const maxSuffixStmt = db.prepare(
+    `SELECT invoice_no FROM invoices WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1`,
   );
 
   return {
@@ -88,6 +97,15 @@ export function openStore(dbPath: string): InvoiceStore {
         invoice_json: string;
       }>;
       return rows.map((r) => JSON.parse(r.invoice_json) as Invoice);
+    },
+
+    getMaxSuffixForMonth(monthKey: string): number {
+      const row = maxSuffixStmt.get(`${monthKey}-%`) as
+        | { invoice_no: string }
+        | undefined;
+      if (!row) return 0;
+      const suffix = Number(row.invoice_no.split("-")[1] ?? "0");
+      return Number.isFinite(suffix) ? suffix : 0;
     },
 
     close(): void {
