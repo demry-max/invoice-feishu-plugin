@@ -5,7 +5,9 @@ import {
   generateInvoice,
   getInvoiceHtml,
   getInvoicePdf,
+  listInvoicesForSourceRecord,
 } from '../services/invoice-service';
+import type { Invoice } from '../types';
 import { createFeishuAdapter } from '../adapters/feishu-adapter';
 
 const feishu = createFeishuAdapter();
@@ -96,6 +98,22 @@ export async function handleGetPdf(req: Request, res: Response): Promise<void> {
     res.send(pdf);
   } catch (err) {
     console.error('GetPdf error:', err);
+    res.status(500).json({ success: false, error: String(err) } as ApiResponse<null>);
+  }
+}
+
+/** GET /api/invoices/by-source/:recordId - list invoices referencing a source record */
+export async function handleListBySource(req: Request, res: Response): Promise<void> {
+  try {
+    const recordId = req.params['recordId'] as string;
+    if (!recordId) {
+      res.status(400).json({ success: false, error: 'recordId required' } as ApiResponse<null>);
+      return;
+    }
+    const invoices = listInvoicesForSourceRecord(recordId);
+    res.json({ success: true, data: invoices } as ApiResponse<Invoice[]>);
+  } catch (err) {
+    console.error('ListBySource error:', err);
     res.status(500).json({ success: false, error: String(err) } as ApiResponse<null>);
   }
 }

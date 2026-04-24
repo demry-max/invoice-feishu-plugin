@@ -91,11 +91,13 @@ const App: React.FC = () => {
     loading,
     error,
     exchangeRates,
+    existingInvoices,
     loadSourceItems,
     doPreview,
     doGenerate,
     clearResult,
   } = useInvoice();
+  const [dupDismissed, setDupDismissed] = useState(false);
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(
     COMPANY_CONFIGS.feilong,
@@ -158,6 +160,11 @@ const App: React.FC = () => {
     return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reset the dup-dismiss each time we load a new row
+  useEffect(() => {
+    setDupDismissed(false);
+  }, [sourceItems]);
 
   // Debounced auto-preview when data or settings change
   useEffect(() => {
@@ -237,6 +244,53 @@ const App: React.FC = () => {
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+
+      {existingInvoices.length > 0 && !dupDismissed && (
+        <div
+          style={{
+            background: "#fffbe6",
+            border: "1px solid #ffe58f",
+            color: "#614700",
+            padding: "10px 12px",
+            marginBottom: 12,
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            ⚠️ 此工单已生成过账单
+          </div>
+          <div style={{ lineHeight: 1.6 }}>
+            {existingInvoices.map((inv) => (
+              <div key={inv.invoice_no}>
+                <strong>{inv.invoice_no}</strong>
+                {" · "}
+                {inv.invoice_type === "final_payment" ? "尾款" : "顾问"}
+                {" · "}
+                {inv.invoice_date}
+                {" · "}
+                {inv.currency}
+                {inv.grand_total.toFixed(2)}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setDupDismissed(true)}
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              padding: "2px 10px",
+              border: "1px solid #faad14",
+              background: "#fff",
+              color: "#614700",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+          >
+            忽略并继续生成新账单
+          </button>
+        </div>
+      )}
 
       <div className="section">
         <div className="section-header">
