@@ -7,8 +7,8 @@ interface Props {
 }
 
 const TEMPLATES: { id: BrandTemplateId; label: string; color: string }[] = [
-  { id: 'feilong', label: '菲龙咨询', color: '#c0392b' },
-  { id: 'starlight', label: '星耀财税', color: '#D4A017' },
+  { id: 'feilong', label: '菲龙咨询 / Feilong Consulting', color: '#c0392b' },
+  { id: 'starlight', label: '星耀财税 / Star Shine Taxation', color: '#D4A017' },
 ];
 
 export const TemplateSelector: React.FC<Props> = ({ value, onChange }) => {
