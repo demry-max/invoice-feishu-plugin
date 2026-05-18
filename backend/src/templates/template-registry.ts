@@ -84,13 +84,13 @@ function escapeHtml(str: string): string {
  * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
  */
 function getTaxNote(taxMode: TaxMode): string {
-  // 2026-05 spec update — 账单调整需求 §2(d).
-  //   tax_excluded (不含税) → 1% / 3% surcharge variants (original).
-  //   tax_included (含税)   → flat 6% surcharge (普通 OR 专用 the same).
+  // 2026-05-18 spec (账单调整需求 §1):
+  //   不含税 (tax_excluded) → 6% surcharge note
+  //   含税   (tax_included) → 上述报价含税, 可开具增值税专用发票
   if (taxMode === "tax_included") {
-    return "注:上述报价不含税;如需开票,可加收6%费用开具增值税普通发票或专用发票。";
+    return "上述报价含税,可开具增值税专用发票。";
   }
-  return "注:上述报价不含税;如需开票,可加收1%费用开具增值税普通发票,或加收3%费用开具增值税专用发票。";
+  return "上述报价不含税;如需开票,可加收6%费用开具增值税普通发票或专用发票。";
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {

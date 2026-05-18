@@ -466,29 +466,31 @@ const App: React.FC = () => {
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <label
-                          style={{
-                            fontSize: "12px",
-                            color: "#666",
-                            marginBottom: "4px",
-                            display: "block",
-                          }}
-                        >
-                          预扣税比例 / EWT Rate
-                        </label>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          {EWT_OPTIONS.map((v) => (
-                            <button
-                              key={v}
-                              className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
-                              onClick={() => setEwtRatePercent(v)}
-                            >
-                              {v}%
-                            </button>
-                          ))}
+                      {templateId === "starlight" && (
+                        <div>
+                          <label
+                            style={{
+                              fontSize: "12px",
+                              color: "#666",
+                              marginBottom: "4px",
+                              display: "block",
+                            }}
+                          >
+                            预扣税比例 / EWT Rate
+                          </label>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            {EWT_OPTIONS.map((v) => (
+                              <button
+                                key={v}
+                                className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                                onClick={() => setEwtRatePercent(v)}
+                              >
+                                {v}%
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </>
                   )}
                 </>

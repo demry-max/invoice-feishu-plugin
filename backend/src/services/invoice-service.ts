@@ -95,34 +95,36 @@ function resolveConsultantVatRate(
 }
 
 /**
- * EWT rate resolution (2026-05 spec update):
- *   tax_mode = "tax_excluded" (不含税) → 0
- *   tax_mode = "tax_included" (含税)   → user override (ewt_rate_percent ∈ {2,10,15}),
- *                                         default 2.
- * Template gating removed — both brands can charge EWT now.
+ * For the "reuse on regenerate" rule: pick the first existing invoice of the
+ * same type tied to any of the source records. Returns its invoice_no, or
+ * undefined when none exists.
  */
-/**
- * For the consultant "reuse on regenerate" rule: pick the first existing
- * consultant invoice tied to any of the source records. Returns its invoice_no,
- * or undefined when none exists.
- */
-function findExistingConsultantInvoiceNo(
+function findExistingInvoiceNoForType(
   sources: ReadonlyArray<{ record_id?: string }>,
+  invoiceType: InvoiceType,
 ): string | undefined {
   for (const s of sources) {
     if (!s.record_id) continue;
     const matches = invoiceStore.listBySourceRecord(s.record_id);
-    const consultant = matches.find((i) => i.invoice_type === "consultant");
-    if (consultant) return consultant.invoice_no;
+    const same = matches.find((i) => i.invoice_type === invoiceType);
+    if (same) return same.invoice_no;
   }
   return undefined;
 }
 
+/**
+ * EWT rate resolution (2026-05-18 spec):
+ *   tax_mode = "tax_excluded" (不含税)                  → 0
+ *   tax_mode = "tax_included" + templateId = feilong    → 0 (菲龙咨询 never charges EWT)
+ *   tax_mode = "tax_included" + templateId = starlight  → override ∈ {2,10,15}, default 2
+ */
 function resolveConsultantEwtRate(
   taxMode: TaxMode,
+  templateId: BrandTemplateId,
   override?: number,
 ): number {
   if (taxMode !== "tax_included") return 0;
+  if (templateId !== "starlight") return 0;
   if (typeof override === "number" && override >= 0) return override;
   return EWT_RATE;
 }
@@ -200,7 +202,11 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
 
   // consultant (default)
   const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
-  const ewtRate = resolveConsultantEwtRate(taxMode, req.ewt_rate_percent);
+  const ewtRate = resolveConsultantEwtRate(
+    taxMode,
+    templateId,
+    req.ewt_rate_percent,
+  );
   const taxableSubtotal = calcTaxableSubtotal(items);
   const vatAmount = calcVat(taxableSubtotal, vatRate);
   const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
@@ -224,13 +230,11 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
 export async function generateInvoice(
   req: GenerateRequest,
 ): Promise<GenerateResponse> {
-  // Consultant rule (2026-05 §2f): if any of the source records already has a
-  // consultant invoice, REUSE that invoice number — don't mint a new one.
+  // Reuse-on-regenerate rule (2026-05-18 spec): if any of the source records
+  // already has an invoice of the same type, REUSE that invoice number — applies
+  // to both consultant and final_payment.
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
-  const existingNo =
-    invoiceType === "consultant"
-      ? findExistingConsultantInvoiceNo(req.items)
-      : undefined;
+  const existingNo = findExistingInvoiceNoForType(req.items, invoiceType);
   const invoiceNo =
     existingNo ??
     generateInvoiceNo((monthKey) => {
@@ -312,7 +316,11 @@ export async function generateInvoice(
     };
   } else {
     const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
-    const ewtRate = resolveConsultantEwtRate(taxMode, req.ewt_rate_percent);
+    const ewtRate = resolveConsultantEwtRate(
+      taxMode,
+      templateId,
+      req.ewt_rate_percent,
+    );
     const taxableSubtotal = calcTaxableSubtotal(items);
     const vatAmount = calcVat(taxableSubtotal, vatRate);
     const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
