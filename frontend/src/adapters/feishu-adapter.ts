@@ -76,8 +76,16 @@ const MAIN_TABLE_FIELDS = {
   // Consultant-invoice write-back targets
   HTML_LINK: ["HTML link", "HTML链接"],
   PDF_LINK: ["PDF link", "PDF链接"],
-  ADD_VAT: ["Add:VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
-  LESS_EWT: ["Less:EWT(2%)", "Less:EWT", "EWT Amount", "预扣税"],
+  ADD_VAT: ["Add:VAT(x%)", "Add: VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
+  LESS_EWT: [
+    "Less:EWT(x%)",
+    "Less: EWT(x%)",
+    "Less:EWT(2%)",
+    "Less: EWT(2%)",
+    "Less:EWT",
+    "EWT Amount",
+    "预扣税",
+  ],
   // Final-payment write-back targets
   FINAL_BILL_NUMBER: ["Final Billing Number", "Final Bill Number"],
   FINAL_BILLING_DATE: ["Final Billing Date"],
