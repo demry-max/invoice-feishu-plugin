@@ -352,17 +352,18 @@ export async function generateInvoice(
     };
   }
 
-  const html = renderByTemplate(templateId, invoice, config, bankAccount);
+  // Compute URLs BEFORE rendering so QR can point at the correct html_url
+  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
+  invoice.html_url = `${baseUrl}/api/invoices/${invoiceNo}/html`;
+  invoice.pdf_url = `${baseUrl}/api/invoices/${invoiceNo}/pdf`;
+
+  const html = await renderByTemplate(templateId, invoice, config, bankAccount);
   const htmlFilename = `${invoiceNo}.html`;
   fs.writeFileSync(path.join(OUTPUT_DIR, htmlFilename), html, "utf-8");
 
   const pdfBuffer = await htmlToPdf(html);
   const pdfFilename = `${invoiceNo}.pdf`;
   fs.writeFileSync(path.join(OUTPUT_DIR, pdfFilename), pdfBuffer);
-
-  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
-  invoice.html_url = `${baseUrl}/api/invoices/${invoiceNo}/html`;
-  invoice.pdf_url = `${baseUrl}/api/invoices/${invoiceNo}/pdf`;
 
   invoiceStore.insert(invoice);
 

@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { GenerateResponse } from "../types";
 
 interface Props {
   result: GenerateResponse | null;
 }
 
-async function fetchAndDownload(url: string, filename: string) {
+async function fetchAndDownload(url: string, filename: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
@@ -19,21 +19,19 @@ async function fetchAndDownload(url: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
 }
 
-async function fetchAndOpen(url: string) {
+async function fetchAndOpen(url: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
   const objUrl = URL.createObjectURL(blob);
-  // Open the blob URL in a new tab. Most browsers allow this from a click.
   window.open(objUrl, "_blank");
   setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
 }
 
-async function copyToClipboard(text: string) {
+async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    // Fallback
     const ta = document.createElement("textarea");
     ta.value = text;
     document.body.appendChild(ta);
@@ -45,137 +43,116 @@ async function copyToClipboard(text: string) {
 
 export const ResultSection: React.FC<Props> = ({ result }) => {
   const [status, setStatus] = useState<string>("");
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  // Fetch the PDF as a blob and embed it via iframe — bypasses Feishu's
+  // domain whitelist and gives the user immediate visual confirmation.
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    setPdfBlobUrl(null);
+    setPdfError(null);
+
+    if (!result?.pdf_url) return;
+
+    (async () => {
+      try {
+        const res = await fetch(result.pdf_url!);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(createdUrl);
+      } catch (err) {
+        if (cancelled) return;
+        setPdfError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [result?.pdf_url]);
 
   if (!result) return null;
 
   const invoiceNo = result.invoice_no;
 
-  const handleOpenHtml = async () => {
+  const handleOpenHtml = async (): Promise<void> => {
     if (!result.html_url) return;
     setStatus("打开 HTML 中…");
     try {
       await fetchAndOpen(result.html_url);
       setStatus("");
     } catch (err) {
-      setStatus(`打开失败: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(
+        `打开失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = async (): Promise<void> => {
     if (!result.pdf_url) return;
     setStatus("下载 PDF 中…");
     try {
       await fetchAndDownload(result.pdf_url, `${invoiceNo}.pdf`);
       setStatus("");
     } catch (err) {
-      setStatus(`下载失败: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(
+        `下载失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
-  const handleCopy = async (url: string) => {
+  const handleCopy = async (url: string): Promise<void> => {
     await copyToClipboard(url);
     setStatus("已复制到剪贴板");
     setTimeout(() => setStatus(""), 2000);
   };
 
-  const linkStyle: React.CSSProperties = {
-    color: "#1890ff",
-    textDecoration: "underline",
-    cursor: "pointer",
-    background: "none",
-    border: "none",
-    padding: 0,
-    font: "inherit",
-  };
-
-  const smallBtnStyle: React.CSSProperties = {
-    marginLeft: 8,
-    fontSize: 12,
-    padding: "2px 8px",
-    border: "1px solid #d9d9d9",
-    borderRadius: 4,
-    background: "#fff",
-    cursor: "pointer",
-  };
-
   return (
-    <div
-      className="section result-section"
-      style={{
-        border: "2px solid #52c41a",
-        background: "#f6ffed",
-        padding: "16px",
-        marginTop: "16px",
-        borderRadius: "8px",
-      }}
-    >
-      <h3 className="section-title success-title" style={{ color: "#52c41a" }}>
-        ✅ 账单生成成功
-      </h3>
-      <div className="result-grid">
-        <div className="result-item" style={{ marginBottom: "8px" }}>
-          <span className="result-label">账单编号: </span>
-          <span className="result-value" style={{ fontWeight: "bold" }}>
-            {invoiceNo}
-          </span>
+    <div className="result-card">
+      <div className="result-card-head">
+        <div className="result-card-title">
+          ✓ 账单已生成 · {invoiceNo}
         </div>
+        {status && <div className="result-card-status">{status}</div>}
+      </div>
 
-        {result.html_url ? (
-          <div className="result-item" style={{ marginBottom: "8px" }}>
-            <button style={linkStyle} onClick={handleOpenHtml}>
-              📄 查看 HTML 账单
-            </button>
-            <button
-              style={smallBtnStyle}
-              onClick={() => handleCopy(result.html_url!)}
-            >
-              复制链接
-            </button>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#999",
-                marginTop: "4px",
-                wordBreak: "break-all",
-              }}
-            >
-              {result.html_url}
-            </div>
+      {/* Inline PDF preview */}
+      <div className="result-pdf-frame">
+        {pdfBlobUrl ? (
+          <iframe
+            title={`Invoice ${invoiceNo}`}
+            src={pdfBlobUrl}
+            className="result-pdf-iframe"
+          />
+        ) : pdfError ? (
+          <div className="result-pdf-fallback result-pdf-error">
+            PDF 预览加载失败：{pdfError}
           </div>
         ) : (
-          <div style={{ color: "#ff4d4f" }}>⚠️ html_url 为空</div>
+          <div className="result-pdf-fallback">PDF 渲染中…</div>
         )}
+      </div>
 
-        {result.pdf_url ? (
-          <div className="result-item" style={{ marginBottom: "8px" }}>
-            <button style={linkStyle} onClick={handleDownloadPdf}>
-              📥 下载 PDF 账单
-            </button>
-            <button
-              style={smallBtnStyle}
-              onClick={() => handleCopy(result.pdf_url!)}
-            >
-              复制链接
-            </button>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#999",
-                marginTop: "4px",
-                wordBreak: "break-all",
-              }}
-            >
-              {result.pdf_url}
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: "#ff4d4f" }}>⚠️ pdf_url 为空</div>
-        )}
-
-        {status && (
-          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-            {status}
-          </div>
+      <div className="result-card-actions">
+        <button className="btn btn-primary" onClick={handleDownloadPdf}>
+          📥 下载 PDF
+        </button>
+        <button className="btn btn-secondary" onClick={handleOpenHtml}>
+          📄 打开 HTML
+        </button>
+        {result.pdf_url && (
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleCopy(result.pdf_url!)}
+            title={result.pdf_url}
+          >
+            复制 PDF 链接
+          </button>
         )}
       </div>
     </div>

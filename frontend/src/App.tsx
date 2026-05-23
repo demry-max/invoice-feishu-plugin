@@ -10,6 +10,7 @@ import type {
   ExchangeRateRow,
 } from "./types";
 import { useInvoice, subscribeSelectionChange } from "./hooks/useInvoice";
+import { usePersistentState } from "./hooks/usePersistentState";
 import { CompanyInfoSection } from "./components/CompanyInfoSection";
 import { BillToSection } from "./components/BillToSection";
 import { ItemsTable } from "./components/ItemsTable";
@@ -110,6 +111,7 @@ const App: React.FC = () => {
   const [dupDismissed, setDupDismissed] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [billToExpanded, setBillToExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(
     COMPANY_CONFIGS.feilong,
@@ -121,17 +123,35 @@ const App: React.FC = () => {
   );
   // Currency symbol is now derived — see `currency` useMemo below.
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
-  const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
-  const [bankAccountId, setBankAccountId] = useState("");
 
-  // New: invoice type + tax rate + display currency
-  const [invoiceType, setInvoiceType] = useState<InvoiceType>("consultant");
-  const [vatRatePercent, setVatRatePercent] = useState<VatRatePercent>(6);
-  const [ewtRatePercent, setEwtRatePercent] = useState<EwtRatePercent>(2);
-  const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency | "">(
+  // Settings persisted per browser so users don't re-pick every session.
+  const [templateId, setTemplateId] = usePersistentState<BrandTemplateId>(
+    "templateId",
+    "feilong",
+  );
+  const [bankAccountId, setBankAccountId] = usePersistentState<string>(
+    "bankAccountId",
     "",
   );
+  const [invoiceType, setInvoiceType] = usePersistentState<InvoiceType>(
+    "invoiceType",
+    "consultant",
+  );
+  const [vatRatePercent, setVatRatePercent] = usePersistentState<VatRatePercent>(
+    "vatRatePercent",
+    6,
+  );
+  const [ewtRatePercent, setEwtRatePercent] = usePersistentState<EwtRatePercent>(
+    "ewtRatePercent",
+    2,
+  );
+  const [taxMode, setTaxMode] = usePersistentState<TaxMode>(
+    "taxMode",
+    "tax_included",
+  );
+  const [displayCurrency, setDisplayCurrency] = usePersistentState<
+    DisplayCurrency | ""
+  >("displayCurrency", "");
 
   // Source currencies from main record (first item)
   const billCurrency = useMemo(
@@ -315,6 +335,39 @@ const App: React.FC = () => {
   }, [existingInvoices, invoiceType]);
 
   // Compact summary string for the collapsed Settings card.
+  // Real-time validation — surfaced inline so user fixes before generating.
+  const warnings = useMemo(() => {
+    const out: string[] = [];
+    if (sourceItems.length === 0) return out;
+
+    if (invoiceType === "consultant" && taxMode === "tax_included") {
+      const anyEligible = sourceItems.some((s) => s.tax_eligible);
+      if (!anyEligible) {
+        out.push(
+          "所有服务行的 Taxation Identification 都不为 YES — VAT 与 EWT 将为 0",
+        );
+      }
+    }
+
+    if (invoiceType === "final_payment") {
+      const allZero = sourceItems.every(
+        (s) => (s.actual_amount_incurred ?? 0) === 0,
+      );
+      if (allZero) {
+        out.push(
+          "尚未填写任何 Actual Amount Incurred — 尾款账单需要先在任务明细表填写实际发生金额",
+        );
+      }
+    }
+    return out;
+  }, [sourceItems, invoiceType, taxMode]);
+
+  const blockingError = useMemo(() => {
+    if (sourceItems.length === 0) return null;
+    if (!billTo.trim()) return "请填写 Bill To";
+    return null;
+  }, [sourceItems.length, billTo]);
+
   const settingsSummary = useMemo(() => {
     const parts: string[] = [
       templateId === "feilong" ? "菲龙咨询" : "Starlight",
@@ -401,6 +454,52 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
+
+        {existingInvoices.length > 0 && (
+          <details
+            className="history-panel"
+            open={historyOpen}
+            onToggle={(e) =>
+              setHistoryOpen((e.target as HTMLDetailsElement).open)
+            }
+          >
+            <summary>
+              📚 该工单历史账单 ({existingInvoices.length})
+            </summary>
+            <ul className="history-list">
+              {existingInvoices.map((inv) => (
+                <li key={inv.invoice_no}>
+                  <span className="history-no">{inv.invoice_no}</span>
+                  <span className="history-type">
+                    {inv.invoice_type === "final_payment" ? "尾款" : "顾问"}
+                  </span>
+                  <span className="history-date">{inv.invoice_date}</span>
+                  <span className="history-amt">
+                    {inv.currency}
+                    {inv.grand_total.toFixed(2)}
+                  </span>
+                  {inv.pdf_url && (
+                    <a
+                      href={inv.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-link"
+                    >
+                      PDF
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {blockingError && (
+          <div className="status-error">⛔ {blockingError}</div>
+        )}
+        {warnings.map((w) => (
+          <div key={w} className="status-warn">⚠️ {w}</div>
+        ))}
       </div>
 
       {sourceItems.length > 0 && (
@@ -700,8 +799,8 @@ const App: React.FC = () => {
           <button
             className="btn btn-danger sticky-bottom-cta"
             onClick={handleGenerate}
-            disabled={loading || !preview}
-            title="⌘+Enter"
+            disabled={loading || !preview || !!blockingError}
+            title={blockingError ?? "⌘+Enter"}
           >
             {loading
               ? "生成中..."

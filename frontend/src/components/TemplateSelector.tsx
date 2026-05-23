@@ -1,19 +1,40 @@
-import React from 'react';
-import type { BrandTemplateId } from '../types';
+import React from "react";
+import type { BrandTemplateId } from "../types";
+
+interface Template {
+  id: BrandTemplateId;
+  zhName: string;
+  enName: string;
+  accent: string;
+}
 
 interface Props {
   value: BrandTemplateId;
   onChange: (id: BrandTemplateId) => void;
 }
 
-const TEMPLATES: { id: BrandTemplateId; label: string; color: string }[] = [
-  { id: 'feilong', label: '菲龙咨询 / Feilong Consulting', color: '#c0392b' },
-  { id: 'starlight', label: '星耀财税 / Star Shine Taxation', color: '#D4A017' },
+const TEMPLATES: Template[] = [
+  {
+    id: "feilong",
+    zhName: "菲龙咨询",
+    enName: "Feilong Consulting",
+    accent: "#c0392b",
+  },
+  {
+    id: "starlight",
+    zhName: "星耀财税",
+    enName: "Star Shine Taxation",
+    accent: "#D4A017",
+  },
 ];
 
+/**
+ * Brand-template selector — small card previews that hint at the invoice layout
+ * (accent header bar + mock data lines) rather than just a color dot.
+ */
 export const TemplateSelector: React.FC<Props> = ({ value, onChange }) => {
   return (
-    <div className="template-selector" style={{ display: 'flex', gap: '8px' }}>
+    <div className="tpl-grid">
       {TEMPLATES.map((t) => {
         const isActive = value === t.id;
         return (
@@ -21,30 +42,32 @@ export const TemplateSelector: React.FC<Props> = ({ value, onChange }) => {
             key={t.id}
             type="button"
             onClick={() => onChange(t.id)}
+            className={`tpl-card ${isActive ? "tpl-card-active" : ""}`}
             style={{
-              padding: '8px 16px',
-              border: `2px solid ${isActive ? t.color : '#ddd'}`,
-              borderRadius: '6px',
-              background: isActive ? t.color : '#fff',
-              color: isActive ? '#fff' : '#333',
-              fontWeight: isActive ? 700 : 400,
-              cursor: 'pointer',
-              fontSize: '13px',
-              transition: 'all 0.2s',
+              border: `2px solid ${isActive ? t.accent : "#e5e7eb"}`,
             }}
+            aria-pressed={isActive}
           >
-            <span
-              style={{
-                display: 'inline-block',
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                background: t.color,
-                marginRight: '6px',
-                border: isActive ? '2px solid #fff' : 'none',
-              }}
-            />
-            {t.label}
+            {/* Mini invoice preview */}
+            <div className="tpl-mini">
+              <div
+                className="tpl-mini-bar"
+                style={{ background: t.accent }}
+              />
+              <div className="tpl-mini-content">
+                <div className="tpl-mini-h"></div>
+                <div className="tpl-mini-line"></div>
+                <div className="tpl-mini-line tpl-mini-line-short"></div>
+                <div
+                  className="tpl-mini-grand"
+                  style={{ color: t.accent }}
+                ></div>
+              </div>
+            </div>
+            <div className="tpl-card-label">
+              <div className="tpl-card-zh">{t.zhName}</div>
+              <div className="tpl-card-en">{t.enName}</div>
+            </div>
           </button>
         );
       })}

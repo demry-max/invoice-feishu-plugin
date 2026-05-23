@@ -274,3 +274,96 @@ body {
     color: #c0392b !important;
   }
 }
+
+/* === 2026-05-18 typography polish (Feilong) === */
+
+/* Tabular numerals on every amount cell — columns align cleanly */
+.invoice-table td.text-right,
+.totals-table td.value,
+.totals-table td.label {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Hairline borders on items table (less heavy than default) */
+.invoice-table,
+.invoice-table th,
+.invoice-table td {
+  border-color: #E5E7EB;
+}
+.invoice-table th {
+  border-bottom: 1.5px solid #c0392b;
+}
+.invoice-table tbody tr + tr td {
+  border-top: 1px solid #F3F4F6;
+}
+
+/* Accent bar above totals block, brand-aligned */
+.totals-section {
+  position: relative;
+  margin-top: 24px;
+  padding-top: 14px;
+}
+.totals-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 2px;
+  width: 240px;
+  background: #c0392b;
+}
+
+/* Emphasized Grand Total */
+.totals-table tr.grand-total td.value {
+  font-size: 18pt;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.totals-table tr.grand-total td.label {
+  font-size: 13pt;
+  font-weight: 600;
+}
+
+/* Page-foot identity line */
+.generated-by {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  text-align: center;
+  font-size: 9pt;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+}
+
+/* QR + DRAFT watermark (shared) */
+.qr-block {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  text-align: center;
+}
+.qr-block img { width: 64px; height: 64px; }
+.qr-block .qr-label {
+  margin-top: 4px;
+  font-size: 8pt;
+  color: #9CA3AF;
+}
+
+.draft-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 120pt;
+  color: rgba(192, 57, 43, 0.08);
+  font-weight: 800;
+  letter-spacing: 6px;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+
+.invoice-page {
+  position: relative;
+}
