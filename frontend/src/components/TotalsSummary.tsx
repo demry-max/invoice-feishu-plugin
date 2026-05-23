@@ -17,7 +17,6 @@ export const TotalsSummary: React.FC<Props> = ({ preview, currency }) => {
   if (preview.invoice_type === "final_payment") {
     const totalBalance = preview.total_balance ?? 0;
     const refunded = preview.amount_refunded ?? 0;
-    const deductible = preview.total_deduction_amount ?? 0;
     const finalBalance = preview.final_balance ?? preview.grand_total;
     return (
       <div className="totals-summary">
@@ -29,12 +28,6 @@ export const TotalsSummary: React.FC<Props> = ({ preview, currency }) => {
           <div className="totals-row">
             <span className="totals-label">Amount Refunded</span>
             <span className="totals-value">{formatAmount(refunded, cur)}</span>
-          </div>
-        )}
-        {deductible > 0 && (
-          <div className="totals-row">
-            <span className="totals-label">Deductible Amount</span>
-            <span className="totals-value">{formatAmount(deductible, cur)}</span>
           </div>
         )}
         <div className="totals-row grand-total">

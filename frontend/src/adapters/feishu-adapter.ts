@@ -76,14 +76,23 @@ const MAIN_TABLE_FIELDS = {
   // Consultant-invoice write-back targets
   HTML_LINK: ["HTML link", "HTML链接"],
   PDF_LINK: ["PDF link", "PDF链接"],
-  ADD_VAT: ["Add:VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
-  LESS_EWT: ["Less:EWT(2%)", "Less:EWT", "EWT Amount", "预扣税"],
+  ADD_VAT: ["Add:VAT(x%)", "Add: VAT(x%)", "Add:VAT", "VAT Amount", "增值税"],
+  LESS_EWT: [
+    "Less:EWT(x%)",
+    "Less: EWT(x%)",
+    "Less:EWT(2%)",
+    "Less: EWT(2%)",
+    "Less:EWT",
+    "EWT Amount",
+    "预扣税",
+  ],
   // Final-payment write-back targets
   FINAL_BILL_NUMBER: ["Final Billing Number", "Final Bill Number"],
   FINAL_BILLING_DATE: ["Final Billing Date"],
   FINAL_HTML_LINK: ["Final HTML link"],
   FINAL_PDF_LINK: ["Final PDF link"],
   FINAL_BALANCE: ["Final Balance"],
+  DISPLAY_CURRENCY: ["Display Currency", "展示币种"],
   // Other main-table reads
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
@@ -95,7 +104,9 @@ const MAIN_TABLE_FIELDS = {
 } as const;
 
 const EXCHANGE_RATE_TABLE_NAMES = [
+  "汇率表|Exchange Rate Table",
   "汇率表",
+  "Exchange Rate Table",
   "Exchange Rate",
   "Exchange Rates",
   "ExchangeRate",
@@ -154,6 +165,7 @@ const SERVICE_TABLE_FIELDS = {
     "项目名称",
   ],
   SERVICE_PERIOD: [
+    "Service Term",
     "Service Period",
     "Period",
     "Duration",
@@ -161,6 +173,7 @@ const SERVICE_TABLE_FIELDS = {
     "Date Range",
     "服务期限",
     "服务期间",
+    "服务期",
     "期间",
   ],
   PRICE: ["Price", "Unit Price", "价格", "单价"],
@@ -728,6 +741,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         MAIN_TABLE_FIELDS.FINAL_BALANCE,
         invoice.final_balance ?? invoice.grand_total,
       );
+      if (invoice.display_currency) {
+        put(MAIN_TABLE_FIELDS.DISPLAY_CURRENCY, invoice.display_currency);
+      }
     } else {
       put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
       put(MAIN_TABLE_FIELDS.BILLING_DATE, dateMs(invoice.invoice_date));

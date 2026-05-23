@@ -43,8 +43,10 @@ export function openStore(dbPath: string): InvoiceStore {
   db.pragma("journal_mode = WAL");
   db.exec(MIGRATIONS);
 
+  // INSERT OR REPLACE so re-generating an existing invoice_no overwrites the row
+  // (used by the consultant "reuse on regenerate" rule).
   const insertStmt = db.prepare(`
-    INSERT INTO invoices (
+    INSERT OR REPLACE INTO invoices (
       invoice_no, invoice_type, template_id, bill_to, company_name,
       invoice_date, currency, subtotal, grand_total, source_record_ids,
       invoice_json, created_at, status

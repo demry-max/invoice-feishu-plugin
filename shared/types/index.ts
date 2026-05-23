@@ -17,6 +17,9 @@ export type DisplayCurrency = "CNY" | "USD" | "PHP";
 /** 支持的 VAT 比例（顾问账单可选） */
 export type VatRatePercent = 1 | 3 | 6 | 12;
 
+/** 支持的 EWT 比例（顾问账单可选） */
+export type EwtRatePercent = 2 | 10 | 15;
+
 /** 银行账户 */
 export interface BankAccount {
   id: string;
@@ -159,6 +162,7 @@ export interface PreviewRequest {
   bank_account_id?: string;
   invoice_type?: InvoiceType;
   vat_rate_percent?: VatRatePercent;
+  ewt_rate_percent?: EwtRatePercent;
   display_currency?: DisplayCurrency;
   /** @deprecated use exchange_rate_bill + exchange_rate_final */
   exchange_rate?: number;
@@ -204,6 +208,7 @@ export interface GenerateRequest {
   bank_account_id?: string;
   invoice_type?: InvoiceType;
   vat_rate_percent?: VatRatePercent;
+  ewt_rate_percent?: EwtRatePercent;
   display_currency?: DisplayCurrency;
   exchange_rate?: number;
   exchange_rate_bill?: number;

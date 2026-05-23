@@ -5,6 +5,7 @@ import type {
   TaxMode,
   InvoiceType,
   VatRatePercent,
+  EwtRatePercent,
   DisplayCurrency,
   ExchangeRateRow,
 } from "./types";
@@ -39,6 +40,7 @@ const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
 };
 
 const VAT_OPTIONS: VatRatePercent[] = [1, 3, 6, 12];
+const EWT_OPTIONS: EwtRatePercent[] = [2, 10, 15];
 const CURRENCY_OPTIONS: DisplayCurrency[] = ["CNY", "USD", "PHP"];
 
 /**
@@ -123,6 +125,7 @@ const App: React.FC = () => {
   // New: invoice type + tax rate + display currency
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("consultant");
   const [vatRatePercent, setVatRatePercent] = useState<VatRatePercent>(6);
+  const [ewtRatePercent, setEwtRatePercent] = useState<EwtRatePercent>(2);
   const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency | "">(
     "",
@@ -242,6 +245,7 @@ const App: React.FC = () => {
     sourceItems,
     invoiceType,
     vatRatePercent,
+    ewtRatePercent,
     displayCurrency,
     rateBill,
     rateFinal,
@@ -257,6 +261,7 @@ const App: React.FC = () => {
   const previewOpts = {
     invoiceType,
     vatRatePercent: invoiceType === "consultant" ? vatRatePercent : undefined,
+    ewtRatePercent: invoiceType === "consultant" ? ewtRatePercent : undefined,
     displayCurrency:
       invoiceType === "final_payment" && displayCurrency
         ? displayCurrency
@@ -437,29 +442,56 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   {taxMode === "tax_included" && (
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "12px",
-                          color: "#666",
-                          marginBottom: "4px",
-                          display: "block",
-                        }}
-                      >
-                        税率比例 / Tax Rate Ratio
-                      </label>
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        {VAT_OPTIONS.map((v) => (
-                          <button
-                            key={v}
-                            className={`btn ${vatRatePercent === v ? "btn-primary" : "btn-secondary"}`}
-                            onClick={() => setVatRatePercent(v)}
-                          >
-                            {v}%
-                          </button>
-                        ))}
+                    <>
+                      <div>
+                        <label
+                          style={{
+                            fontSize: "12px",
+                            color: "#666",
+                            marginBottom: "4px",
+                            display: "block",
+                          }}
+                        >
+                          税率比例 / Tax Rate Ratio
+                        </label>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {VAT_OPTIONS.map((v) => (
+                            <button
+                              key={v}
+                              className={`btn ${vatRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                              onClick={() => setVatRatePercent(v)}
+                            >
+                              {v}%
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                      {templateId === "starlight" && (
+                        <div>
+                          <label
+                            style={{
+                              fontSize: "12px",
+                              color: "#666",
+                              marginBottom: "4px",
+                              display: "block",
+                            }}
+                          >
+                            预扣税比例 / EWT Rate
+                          </label>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            {EWT_OPTIONS.map((v) => (
+                              <button
+                                key={v}
+                                className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                                onClick={() => setEwtRatePercent(v)}
+                              >
+                                {v}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}

@@ -84,13 +84,13 @@ function escapeHtml(str: string): string {
  * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
  */
 function getTaxNote(taxMode: TaxMode): string {
-  // New semantics (per 账单调整需求 Copy.docx):
-  //   tax_excluded (不含税) → "上述报价不含税;如需开票…"
-  //   tax_included (含税)   → "上述报价含税,可开具增值税专用发票。"
+  // 2026-05-18 spec (账单调整需求 §1):
+  //   不含税 (tax_excluded) → 6% surcharge note
+  //   含税   (tax_included) → 上述报价含税, 可开具增值税专用发票
   if (taxMode === "tax_included") {
     return "上述报价含税,可开具增值税专用发票。";
   }
-  return "注:上述报价不含税;如需开票,可加收1%费用开具增值税普通发票,或加收3%费用开具增值税专用发票。";
+  return "上述报价不含税;如需开票,可加收6%费用开具增值税普通发票或专用发票。";
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {
@@ -444,13 +444,7 @@ function renderFinalPaymentHtml(
           <td class="value">${formatAmount(invoice.amount_refunded ?? 0, c)}</td>
         </tr>`);
   }
-  if ((invoice.total_deduction_amount ?? 0) > 0) {
-    totalsRows.push(`
-        <tr>
-          <td class="label">Deductible Amount</td>
-          <td class="value">${formatAmount(invoice.total_deduction_amount ?? 0, c)}</td>
-        </tr>`);
-  }
+  // Deductible Amount intentionally hidden per 2026-05 spec update.
   totalsRows.push(`
         <tr class="grand-total">
           <td class="label">Final Balance</td>

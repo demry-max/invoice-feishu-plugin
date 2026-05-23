@@ -8,6 +8,7 @@ import type {
   BrandTemplateId,
   InvoiceType,
   VatRatePercent,
+  EwtRatePercent,
   DisplayCurrency,
   ExchangeRateRow,
   Invoice,
@@ -39,6 +40,7 @@ export interface UseInvoiceState {
 export interface PreviewOptions {
   invoiceType?: InvoiceType;
   vatRatePercent?: VatRatePercent;
+  ewtRatePercent?: EwtRatePercent;
   displayCurrency?: DisplayCurrency;
   exchangeRate?: number;
   exchangeRateBill?: number;
@@ -128,6 +130,7 @@ export function useInvoice() {
           bank_account_id: bankAccountId,
           invoice_type: opts?.invoiceType,
           vat_rate_percent: opts?.vatRatePercent,
+          ewt_rate_percent: opts?.ewtRatePercent,
           display_currency: opts?.displayCurrency,
           exchange_rate: opts?.exchangeRate,
           exchange_rate_bill: opts?.exchangeRateBill,
@@ -169,6 +172,7 @@ export function useInvoice() {
           bank_account_id: bankAccountId,
           invoice_type: opts?.invoiceType,
           vat_rate_percent: opts?.vatRatePercent,
+          ewt_rate_percent: opts?.ewtRatePercent,
           display_currency: opts?.displayCurrency,
           exchange_rate: opts?.exchangeRate,
           exchange_rate_bill: opts?.exchangeRateBill,

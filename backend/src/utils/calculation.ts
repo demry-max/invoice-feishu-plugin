@@ -144,15 +144,14 @@ export function calcTotalBalance(items: InvoiceItem[]): number {
 }
 
 /**
- * 尾款账单 final_balance = Total Balance − Deductible Amount + Amount Refunded
- * （对应文档 "Final Balance = Total Balance - Deductible Amount + Amount Refunded"）
+ * 尾款账单 final_balance = Total Balance + Amount Refunded
+ * (2026-05 spec update — Deductible Amount removed from formula and totals block.)
  */
 export function calcFinalBalance(
   totalBalance: number,
-  deductibleAmount: number,
   amountRefunded: number,
 ): number {
-  return round2(totalBalance - deductibleAmount + amountRefunded);
+  return round2(totalBalance + amountRefunded);
 }
 
 /** 旧 API — 保留向后兼容（纯 subtotal + vat） */

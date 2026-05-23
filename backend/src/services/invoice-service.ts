@@ -44,6 +44,17 @@ const invoiceStore: InvoiceStore = openStore(
   path.join(DATA_DIR, "invoices.db"),
 );
 
+/**
+ * Per-month minimum-suffix floors requested by finance (账单调整需求 §2e).
+ * The counter for that month seeds to max(DB max, floor) so the next generated
+ * invoice number is at least floor + 1.
+ *
+ *   "建议从 202605-12796 开始" → floor 12795 for 202605.
+ */
+const INVOICE_NO_FLOORS: Record<string, number> = {
+  "202605": 12795,
+};
+
 const DEFAULT_BANK_BY_TEMPLATE: Record<BrandTemplateId, string> = {
   feilong: "feilong-minsheng",
   starlight: "starlight-bdo-php",
@@ -84,15 +95,37 @@ function resolveConsultantVatRate(
 }
 
 /**
- * EWT applies only to consultant invoices under Starlight, in tax_included mode.
- * Feilong invoices (菲龙咨询) never compute EWT.
+ * For the "reuse on regenerate" rule: pick the first existing invoice of the
+ * same type tied to any of the source records. Returns its invoice_no, or
+ * undefined when none exists.
+ */
+function findExistingInvoiceNoForType(
+  sources: ReadonlyArray<{ record_id?: string }>,
+  invoiceType: InvoiceType,
+): string | undefined {
+  for (const s of sources) {
+    if (!s.record_id) continue;
+    const matches = invoiceStore.listBySourceRecord(s.record_id);
+    const same = matches.find((i) => i.invoice_type === invoiceType);
+    if (same) return same.invoice_no;
+  }
+  return undefined;
+}
+
+/**
+ * EWT rate resolution (2026-05-18 spec):
+ *   tax_mode = "tax_excluded" (不含税)                  → 0
+ *   tax_mode = "tax_included" + templateId = feilong    → 0 (菲龙咨询 never charges EWT)
+ *   tax_mode = "tax_included" + templateId = starlight  → override ∈ {2,10,15}, default 2
  */
 function resolveConsultantEwtRate(
   taxMode: TaxMode,
   templateId: BrandTemplateId,
+  override?: number,
 ): number {
   if (taxMode !== "tax_included") return 0;
   if (templateId !== "starlight") return 0;
+  if (typeof override === "number" && override >= 0) return override;
   return EWT_RATE;
 }
 
@@ -147,7 +180,7 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     const refunded = round2(amountRefunded * rateBill);
     const deductible = round2(totalDeductionAmount * rateBill);
     const totalBalance = calcTotalBalance(items);
-    const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
+    const finalBalance = calcFinalBalance(totalBalance, refunded);
     return {
       items,
       subtotal,
@@ -169,7 +202,11 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
 
   // consultant (default)
   const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
-  const ewtRate = resolveConsultantEwtRate(taxMode, templateId);
+  const ewtRate = resolveConsultantEwtRate(
+    taxMode,
+    templateId,
+    req.ewt_rate_percent,
+  );
   const taxableSubtotal = calcTaxableSubtotal(items);
   const vatAmount = calcVat(taxableSubtotal, vatRate);
   const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
@@ -193,15 +230,23 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
 export async function generateInvoice(
   req: GenerateRequest,
 ): Promise<GenerateResponse> {
-  const invoiceNo = generateInvoiceNo((monthKey) =>
-    invoiceStore.getMaxSuffixForMonth(monthKey),
-  );
+  // Reuse-on-regenerate rule (2026-05-18 spec): if any of the source records
+  // already has an invoice of the same type, REUSE that invoice number — applies
+  // to both consultant and final_payment.
+  const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
+  const existingNo = findExistingInvoiceNoForType(req.items, invoiceType);
+  const invoiceNo =
+    existingNo ??
+    generateInvoiceNo((monthKey) => {
+      const fromDb = invoiceStore.getMaxSuffixForMonth(monthKey);
+      const floor = INVOICE_NO_FLOORS[monthKey] ?? 0;
+      return Math.max(fromDb, floor);
+    });
   const invoiceDate =
     req.invoice_date || new Date().toISOString().split("T")[0];
   // Default tax mode to tax_included (see previewInvoice for semantics).
   const taxMode: TaxMode = req.tax_mode ?? "tax_included";
   const templateId: BrandTemplateId = req.template_id ?? "feilong";
-  const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const legacyRate =
     typeof req.exchange_rate === "number" && req.exchange_rate > 0
       ? req.exchange_rate
@@ -237,7 +282,7 @@ export async function generateInvoice(
     const refunded = round2(amountRefunded * rateBill);
     const deductible = round2(totalDeductionAmount * rateBill);
     const totalBalance = calcTotalBalance(items);
-    const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
+    const finalBalance = calcFinalBalance(totalBalance, refunded);
     invoice = {
       invoice_no: invoiceNo,
       company_name: req.company_name,
@@ -271,7 +316,11 @@ export async function generateInvoice(
     };
   } else {
     const vatRate = resolveConsultantVatRate(taxMode, req.vat_rate_percent);
-    const ewtRate = resolveConsultantEwtRate(taxMode, templateId);
+    const ewtRate = resolveConsultantEwtRate(
+      taxMode,
+      templateId,
+      req.ewt_rate_percent,
+    );
     const taxableSubtotal = calcTaxableSubtotal(items);
     const vatAmount = calcVat(taxableSubtotal, vatRate);
     const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
