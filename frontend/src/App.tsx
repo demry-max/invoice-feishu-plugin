@@ -108,6 +108,8 @@ const App: React.FC = () => {
     clearResult,
   } = useInvoice();
   const [dupDismissed, setDupDismissed] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [billToExpanded, setBillToExpanded] = useState(false);
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(
     COMPANY_CONFIGS.feilong,
@@ -289,6 +291,53 @@ const App: React.FC = () => {
     );
   };
 
+  // ⌘+Enter (Mac) / Ctrl+Enter — fire Generate when ready.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const cmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (cmdOrCtrl && e.key === "Enter") {
+        if (loading || !preview || !sourceItems.length || !billTo.trim()) return;
+        e.preventDefault();
+        handleGenerate();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, preview, sourceItems.length, billTo]);
+
+  // The invoice number that will actually be used if the user generates now —
+  // either the previously-saved one for this WO (reuse) or "new".
+  const reuseInvoiceNo = useMemo(() => {
+    if (!existingInvoices.length) return null;
+    const same = existingInvoices.find((i) => i.invoice_type === invoiceType);
+    return same?.invoice_no ?? null;
+  }, [existingInvoices, invoiceType]);
+
+  // Compact summary string for the collapsed Settings card.
+  const settingsSummary = useMemo(() => {
+    const parts: string[] = [
+      templateId === "feilong" ? "菲龙咨询" : "Starlight",
+    ];
+    if (invoiceType === "consultant") {
+      parts.push(taxMode === "tax_included" ? `含税 ${vatRatePercent}%` : "不含税");
+      if (taxMode === "tax_included" && templateId === "starlight") {
+        parts.push(`EWT ${ewtRatePercent}%`);
+      }
+    } else {
+      parts.push(displayCurrency ? `${displayCurrency}` : "原始币种");
+    }
+    return parts.join(" · ");
+  }, [templateId, invoiceType, taxMode, vatRatePercent, ewtRatePercent, displayCurrency]);
+
+  // Compact Bill-To summary.
+  const billToSummary = useMemo(() => {
+    const company = (companyName || "—").trim();
+    const contact = (billTo || "").trim();
+    if (contact && contact !== company) return `${company} · ${contact}`;
+    return company;
+  }, [companyName, billTo]);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -298,106 +347,113 @@ const App: React.FC = () => {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {existingInvoices.length > 0 && !dupDismissed && (
-        <div
-          style={{
-            background: "#fffbe6",
-            border: "1px solid #ffe58f",
-            color: "#614700",
-            padding: "10px 12px",
-            marginBottom: 12,
-            borderRadius: 6,
-            fontSize: 13,
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            ⚠️ 此工单已生成过账单
-          </div>
-          <div style={{ lineHeight: 1.6 }}>
-            {existingInvoices.map((inv) => (
-              <div key={inv.invoice_no}>
-                <strong>{inv.invoice_no}</strong>
-                {" · "}
-                {inv.invoice_type === "final_payment" ? "尾款" : "顾问"}
-                {" · "}
-                {inv.invoice_date}
-                {" · "}
-                {inv.currency}
-                {inv.grand_total.toFixed(2)}
-              </div>
-            ))}
+      {/* === Top status bar — replaces 选中记录 + dup warning + 账单类型 === */}
+      <div className="status-bar">
+        <div className="status-bar-line">
+          <div className="status-bar-summary">
+            {sourceItems.length === 0
+              ? "👈 请先在表格中选中一条业务工单"
+              : `${billToSummary} · ${sourceItems.length} 项`}
           </div>
           <button
-            onClick={() => setDupDismissed(true)}
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              padding: "2px 10px",
-              border: "1px solid #faad14",
-              background: "#fff",
-              color: "#614700",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-          >
-            忽略并继续生成新账单 / Dismiss and Create New
-          </button>
-        </div>
-      )}
-
-      <div className="section">
-        <div className="section-header">
-          <h3 className="section-title">选中记录 / Selected Records</h3>
-          <button
-            className="btn btn-secondary"
+            className="btn-link"
             onClick={loadSourceItems}
             disabled={loading}
+            aria-label="刷新选中记录"
           >
-            {loading ? "加载中... / Loading..." : "加载选中记录 / Load Selected"}
+            {loading ? "⟳" : "⟳ 刷新"}
           </button>
         </div>
+
         {sourceItems.length > 0 && (
-          <p className="record-count">
-            已加载 {sourceItems.length} 条记录 / {sourceItems.length} record
-            {sourceItems.length > 1 ? "s" : ""} loaded
-          </p>
+          <div className="status-bar-controls">
+            <div className="seg">
+              <button
+                className={`seg-btn ${invoiceType === "consultant" ? "seg-active" : ""}`}
+                onClick={() => setInvoiceType("consultant")}
+              >
+                顾问
+              </button>
+              <button
+                className={`seg-btn ${invoiceType === "final_payment" ? "seg-active" : ""}`}
+                onClick={() => setInvoiceType("final_payment")}
+              >
+                尾款
+              </button>
+            </div>
+            {reuseInvoiceNo && (
+              <span
+                className="badge badge-reuse"
+                title="同 WO 已有账单，再次生成会覆盖同号"
+              >
+                ✓ 复用编号 {reuseInvoiceNo}
+              </span>
+            )}
+          </div>
+        )}
+
+        {existingInvoices.length > 0 && !dupDismissed && !reuseInvoiceNo && (
+          <div className="status-dup">
+            ⚠️ 该工单已有{" "}
+            {existingInvoices.map((inv) => inv.invoice_no).join(", ")}（不同类型）
+            <button className="btn-link" onClick={() => setDupDismissed(true)}>
+              忽略
+            </button>
+          </div>
         )}
       </div>
 
       {sourceItems.length > 0 && (
         <>
-          {/* 账单类型 */}
+
+          {/* === Collapsible Bill-To === */}
           <div className="section">
-            <h3 className="section-title">账单类型 / Invoice Type</h3>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div className="section-header">
+              <h3 className="section-title">客户信息 / Bill To</h3>
               <button
-                className={`btn ${invoiceType === "consultant" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setInvoiceType("consultant")}
+                className="btn-link"
+                onClick={() => setBillToExpanded(!billToExpanded)}
               >
-                顾问账单 / Consultant
-              </button>
-              <button
-                className={`btn ${invoiceType === "final_payment" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setInvoiceType("final_payment")}
-              >
-                尾款账单 / Final Payment
+                {billToExpanded ? "收起" : "编辑"}
               </button>
             </div>
+            {!billToExpanded ? (
+              <p className="row-summary">
+                {billToSummary}
+                <span className="row-summary-meta"> · {invoiceDate}</span>
+              </p>
+            ) : (
+              <BillToSection
+                billTo={billTo}
+                companyName={companyName}
+                invoiceDate={invoiceDate}
+                onBillToChange={setBillTo}
+                onCompanyNameChange={setCompanyName}
+                onInvoiceDateChange={setInvoiceDate}
+              />
+            )}
           </div>
 
-          <BillToSection
-            billTo={billTo}
-            companyName={companyName}
-            invoiceDate={invoiceDate}
-            onBillToChange={setBillTo}
-            onCompanyNameChange={setCompanyName}
-            onInvoiceDateChange={setInvoiceDate}
-          />
-
+          {/* === Collapsible Settings === */}
           <div className="section">
-            <h3 className="section-title">账单设置 / Invoice Settings</h3>
+            <div className="section-header">
+              <h3 className="section-title">账单设置 / Invoice Settings</h3>
+              <button
+                className="btn-link"
+                onClick={() => setSettingsExpanded(!settingsExpanded)}
+              >
+                {settingsExpanded ? "收起" : "展开"}
+              </button>
+            </div>
+            {!settingsExpanded && (
+              <p className="row-summary">{settingsSummary}</p>
+            )}
             <div
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+              style={{
+                display: settingsExpanded ? "flex" : "none",
+                flexDirection: "column",
+                gap: "12px",
+              }}
             >
               <div>
                 <label
@@ -617,16 +673,6 @@ const App: React.FC = () => {
           </div>
 
           <TotalsSummary preview={preview} currency={currency} />
-
-          <div className="actions">
-            <button
-              className="btn btn-danger"
-              onClick={handleGenerate}
-              disabled={loading || !preview}
-            >
-              {loading ? "生成中... / Generating..." : "生成正式账单 / Generate Invoice"}
-            </button>
-          </div>
         </>
       )}
 
@@ -636,6 +682,32 @@ const App: React.FC = () => {
         <div className="actions">
           <button className="btn btn-secondary" onClick={clearResult}>
             生成新账单 / Create New Invoice
+          </button>
+        </div>
+      )}
+
+      {/* === Sticky bottom action bar — always-visible Grand Total + Generate === */}
+      {sourceItems.length > 0 && !result && (
+        <div className="sticky-bottom">
+          <div className="sticky-bottom-total">
+            <span className="sticky-bottom-label">Grand Total</span>
+            <span className="sticky-bottom-amount">
+              {preview
+                ? `${currency}${preview.grand_total.toFixed(2)}`
+                : "—"}
+            </span>
+          </div>
+          <button
+            className="btn btn-danger sticky-bottom-cta"
+            onClick={handleGenerate}
+            disabled={loading || !preview}
+            title="⌘+Enter"
+          >
+            {loading
+              ? "生成中..."
+              : reuseInvoiceNo
+                ? `覆盖生成 ${reuseInvoiceNo}`
+                : "生成正式账单"}
           </button>
         </div>
       )}
