@@ -242,9 +242,11 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset the dup-dismiss each time we load a new row
+  // Reset dup-dismiss + clear stale result each time we load a new row
   useEffect(() => {
     setDupDismissed(false);
+    clearResult();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceItems]);
 
   // Debounced auto-preview when data or settings change
@@ -767,10 +769,10 @@ const App: React.FC = () => {
         </>
       )}
 
-      <ResultSection result={result} onCreateNew={clearResult} />
+      <ResultSection result={result} />
 
       {/* === Sticky bottom action bar — always-visible Grand Total + Generate === */}
-      {sourceItems.length > 0 && !result && (
+      {sourceItems.length > 0 && (
         <div className="sticky-bottom">
           <div className="sticky-bottom-total">
             <span className="sticky-bottom-label">Grand Total</span>

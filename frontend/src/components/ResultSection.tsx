@@ -3,7 +3,6 @@ import type { GenerateResponse } from "../types";
 
 interface Props {
   result: GenerateResponse | null;
-  onCreateNew?: () => void;
 }
 
 async function fetchAndDownload(url: string, filename: string): Promise<void> {
@@ -42,7 +41,7 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
-export const ResultSection: React.FC<Props> = ({ result, onCreateNew }) => {
+export const ResultSection: React.FC<Props> = ({ result }) => {
   const [status, setStatus] = useState<string>("");
 
   if (!result) return null;
@@ -104,15 +103,6 @@ export const ResultSection: React.FC<Props> = ({ result, onCreateNew }) => {
             title={result.pdf_url}
           >
             复制 PDF 链接
-          </button>
-        )}
-        {onCreateNew && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onCreateNew}
-          >
-            生成新账单 / Create New
           </button>
         )}
       </div>
