@@ -533,6 +533,12 @@ const App: React.FC = () => {
             )}
           </div>
 
+          {/* === Brand template — always visible (high-impact choice) === */}
+          <div className="section">
+            <h3 className="section-title">品牌模板 / Brand Template</h3>
+            <TemplateSelector value={templateId} onChange={setTemplateId} />
+          </div>
+
           {/* === Collapsible Settings === */}
           <div className="section">
             <div className="section-header">
@@ -554,20 +560,6 @@ const App: React.FC = () => {
                 gap: "12px",
               }}
             >
-              <div>
-                <label
-                  style={{
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "4px",
-                    display: "block",
-                  }}
-                >
-                  品牌模板 / Brand Template
-                </label>
-                <TemplateSelector value={templateId} onChange={setTemplateId} />
-              </div>
-
               {invoiceType === "consultant" && (
                 <>
                   <div>
