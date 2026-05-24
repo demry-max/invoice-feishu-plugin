@@ -340,16 +340,18 @@ body {
 
 /* QR + DRAFT watermark shared */
 .qr-block {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 18px auto 8px auto;
+  page-break-inside: avoid;
 }
-.qr-block img { width: 64px; height: 64px; }
+.qr-block img { width: 80px; height: 80px; display: block; }
 .qr-block .qr-label {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 8pt;
   color: #9CA3AF;
+  letter-spacing: 0.3px;
 }
 
 .draft-watermark {
