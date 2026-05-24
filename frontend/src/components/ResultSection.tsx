@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { GenerateResponse } from "../types";
 
 interface Props {
   result: GenerateResponse | null;
+  onCreateNew?: () => void;
 }
 
 async function fetchAndDownload(url: string, filename: string): Promise<void> {
@@ -41,40 +42,8 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
-export const ResultSection: React.FC<Props> = ({ result }) => {
+export const ResultSection: React.FC<Props> = ({ result, onCreateNew }) => {
   const [status, setStatus] = useState<string>("");
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-
-  // Fetch the PDF as a blob and embed it via iframe — bypasses Feishu's
-  // domain whitelist and gives the user immediate visual confirmation.
-  useEffect(() => {
-    let cancelled = false;
-    let createdUrl: string | null = null;
-    setPdfBlobUrl(null);
-    setPdfError(null);
-
-    if (!result?.pdf_url) return;
-
-    (async () => {
-      try {
-        const res = await fetch(result.pdf_url!);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
-        setPdfBlobUrl(createdUrl);
-      } catch (err) {
-        if (cancelled) return;
-        setPdfError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
-    };
-  }, [result?.pdf_url]);
 
   if (!result) return null;
 
@@ -121,26 +90,9 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
         {status && <div className="result-card-status">{status}</div>}
       </div>
 
-      {/* Inline PDF preview */}
-      <div className="result-pdf-frame">
-        {pdfBlobUrl ? (
-          <iframe
-            title={`Invoice ${invoiceNo}`}
-            src={pdfBlobUrl}
-            className="result-pdf-iframe"
-          />
-        ) : pdfError ? (
-          <div className="result-pdf-fallback result-pdf-error">
-            PDF 预览加载失败：{pdfError}
-          </div>
-        ) : (
-          <div className="result-pdf-fallback">PDF 渲染中…</div>
-        )}
-      </div>
-
       <div className="result-card-actions">
         <button className="btn btn-primary" onClick={handleDownloadPdf}>
-          📥 下载 PDF
+          📥 下载 PDF / Download PDF
         </button>
         <button className="btn btn-secondary" onClick={handleOpenHtml}>
           📄 打开 HTML
@@ -152,6 +104,15 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
             title={result.pdf_url}
           >
             复制 PDF 链接
+          </button>
+        )}
+        {onCreateNew && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onCreateNew}
+          >
+            生成新账单 / Create New
           </button>
         )}
       </div>

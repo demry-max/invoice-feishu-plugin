@@ -109,7 +109,7 @@ const App: React.FC = () => {
     clearResult,
   } = useInvoice();
   const [dupDismissed, setDupDismissed] = useState(false);
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(true);
   const [billToExpanded, setBillToExpanded] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -767,15 +767,7 @@ const App: React.FC = () => {
         </>
       )}
 
-      <ResultSection result={result} />
-
-      {result && (
-        <div className="actions">
-          <button className="btn btn-secondary" onClick={clearResult}>
-            生成新账单 / Create New Invoice
-          </button>
-        </div>
-      )}
+      <ResultSection result={result} onCreateNew={clearResult} />
 
       {/* === Sticky bottom action bar — always-visible Grand Total + Generate === */}
       {sourceItems.length > 0 && !result && (
