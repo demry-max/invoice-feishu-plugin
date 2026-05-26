@@ -50,33 +50,33 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
 
   const handleOpenHtml = async (): Promise<void> => {
     if (!result.html_url) return;
-    setStatus("打开 HTML 中…");
+    setStatus("打开 HTML 中… / Opening HTML…");
     try {
       await fetchAndOpen(result.html_url);
       setStatus("");
     } catch (err) {
       setStatus(
-        `打开失败: ${err instanceof Error ? err.message : String(err)}`,
+        `打开失败 / Open failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
 
   const handleDownloadPdf = async (): Promise<void> => {
     if (!result.pdf_url) return;
-    setStatus("下载 PDF 中…");
+    setStatus("下载 PDF 中… / Downloading PDF…");
     try {
       await fetchAndDownload(result.pdf_url, `${invoiceNo}.pdf`);
       setStatus("");
     } catch (err) {
       setStatus(
-        `下载失败: ${err instanceof Error ? err.message : String(err)}`,
+        `下载失败 / Download failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
 
   const handleCopy = async (url: string): Promise<void> => {
     await copyToClipboard(url);
-    setStatus("已复制到剪贴板");
+    setStatus("已复制到剪贴板 / Copied to clipboard");
     setTimeout(() => setStatus(""), 2000);
   };
 
@@ -84,7 +84,7 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
     <div className="result-card">
       <div className="result-card-head">
         <div className="result-card-title">
-          ✓ 账单已生成 · {invoiceNo}
+          ✓ 账单已生成 / Invoice Generated · {invoiceNo}
         </div>
         {status && <div className="result-card-status">{status}</div>}
       </div>
@@ -94,7 +94,7 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
           📥 下载 PDF / Download PDF
         </button>
         <button className="btn btn-secondary" onClick={handleOpenHtml}>
-          📄 打开 HTML
+          📄 打开 HTML / Open HTML
         </button>
         {result.pdf_url && (
           <button
@@ -102,7 +102,7 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
             onClick={() => handleCopy(result.pdf_url!)}
             title={result.pdf_url}
           >
-            复制 PDF 链接
+            复制 PDF 链接 / Copy PDF Link
           </button>
         )}
       </div>

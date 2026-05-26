@@ -357,7 +357,7 @@ const App: React.FC = () => {
       );
       if (allZero) {
         out.push(
-          "尚未填写任何 Actual Amount Incurred — 尾款账单需要先在任务明细表填写实际发生金额",
+          "尚未填写任何 Actual Amount Incurred — 尾款账单需要先在任务明细表填写实际发生金额 / No Actual Amount Incurred entered — Final-Payment invoices require filling in the actual amount in the task detail table first",
         );
       }
     }
@@ -375,7 +375,7 @@ const App: React.FC = () => {
       templateId === "feilong" ? "菲龙咨询" : "Starlight",
     ];
     if (invoiceType === "consultant") {
-      parts.push(taxMode === "tax_included" ? `含税 ${vatRatePercent}%` : "不含税");
+      parts.push(taxMode === "tax_included" ? `含税 / Tax Included ${vatRatePercent}%` : "不含税 / Tax Excluded");
       if (taxMode === "tax_included" && templateId === "starlight") {
         parts.push(`EWT ${ewtRatePercent}%`);
       }
@@ -414,9 +414,9 @@ const App: React.FC = () => {
             className="btn-link"
             onClick={loadSourceItems}
             disabled={loading}
-            aria-label="刷新选中记录"
+            aria-label="刷新选中记录 / Refresh selected record"
           >
-            {loading ? "⟳" : "⟳ 刷新"}
+            {loading ? "⟳" : "⟳ 刷新 / Refresh"}
           </button>
         </div>
 
@@ -427,13 +427,13 @@ const App: React.FC = () => {
                 className={`seg-btn ${invoiceType === "consultant" ? "seg-active" : ""}`}
                 onClick={() => setInvoiceType("consultant")}
               >
-                顾问
+                顾问 / Consultant
               </button>
               <button
                 className={`seg-btn ${invoiceType === "final_payment" ? "seg-active" : ""}`}
                 onClick={() => setInvoiceType("final_payment")}
               >
-                尾款
+                尾款 / Final Payment
               </button>
             </div>
             {reuseInvoiceNo && (
@@ -473,7 +473,7 @@ const App: React.FC = () => {
                 <li key={inv.invoice_no}>
                   <span className="history-no">{inv.invoice_no}</span>
                   <span className="history-type">
-                    {inv.invoice_type === "final_payment" ? "尾款" : "顾问"}
+                    {inv.invoice_type === "final_payment" ? "尾款 / Final" : "顾问 / Consultant"}
                   </span>
                   <span className="history-date">{inv.invoice_date}</span>
                   <span className="history-amt">
@@ -515,7 +515,7 @@ const App: React.FC = () => {
                 className="btn-link"
                 onClick={() => setBillToExpanded(!billToExpanded)}
               >
-                {billToExpanded ? "收起" : "编辑"}
+                {billToExpanded ? "收起 / Collapse" : "编辑 / Edit"}
               </button>
             </div>
             {!billToExpanded ? (
@@ -549,7 +549,7 @@ const App: React.FC = () => {
                 className="btn-link"
                 onClick={() => setSettingsExpanded(!settingsExpanded)}
               >
-                {settingsExpanded ? "收起" : "展开"}
+                {settingsExpanded ? "收起 / Collapse" : "展开 / Expand"}
               </button>
             </div>
             {!settingsExpanded && (
@@ -580,13 +580,13 @@ const App: React.FC = () => {
                         className={`btn ${taxMode === "tax_excluded" ? "btn-primary" : "btn-secondary"}`}
                         onClick={() => setTaxMode("tax_excluded")}
                       >
-                        不含税
+                        不含税 / Tax Excluded
                       </button>
                       <button
                         className={`btn ${taxMode === "tax_included" ? "btn-primary" : "btn-secondary"}`}
                         onClick={() => setTaxMode("tax_included")}
                       >
-                        含税
+                        含税 / Tax Included
                       </button>
                     </div>
                   </div>
@@ -789,10 +789,10 @@ const App: React.FC = () => {
             title={blockingError ?? "⌘+Enter"}
           >
             {loading
-              ? "生成中..."
+              ? "生成中... / Generating..."
               : reuseInvoiceNo
-                ? `覆盖生成 ${reuseInvoiceNo}`
-                : "生成正式账单"}
+                ? `覆盖生成 / Overwrite ${reuseInvoiceNo}`
+                : "生成正式账单 / Generate Invoice"}
           </button>
         </div>
       )}
