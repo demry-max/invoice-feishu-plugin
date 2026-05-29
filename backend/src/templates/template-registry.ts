@@ -6,7 +6,6 @@ import type {
   CompanyConfig,
   BankAccount,
   BrandTemplateId,
-  TaxMode,
 } from "../types";
 
 /** Render the invoice's html_url as a base64 PNG QR data URI (~128x128). */
@@ -92,19 +91,24 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** CNY 货币符号 (U+00A5) — 顾问账单不含税备注按币种区分加税费率时使用 */
+const CNY_SYMBOL = "¥";
+
 /**
- * Notes 文本根据含税模式动态生成
- * 用户选择"不含税"→ tax_included → 不含税 note
- * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
+ * Notes 文本根据含税模式与币种动态生成
+ * 含税 (tax_included)  → 上述报价含税, 可开具增值税专用发票
+ * 不含税 (tax_excluded) → 加税开票附加费按币种区分: 人民币 6%, 其他币种 12%
  */
-function getTaxNote(taxMode: TaxMode): string {
-  // 2026-05-18 spec (账单调整需求 §1):
-  //   不含税 (tax_excluded) → 6% surcharge note
-  //   含税   (tax_included) → 上述报价含税, 可开具增值税专用发票
-  if (taxMode === "tax_included") {
+function getTaxNote(invoice: Invoice): string {
+  // 2026-05-29 spec (顾问/Consultant 账单备注):
+  //   含税   (tax_included)                 → 上述报价含税, 可开具增值税专用发票
+  //   不含税 (tax_excluded) + Currency = CNY → 加收 6% 费用
+  //   不含税 (tax_excluded) + Currency ≠ CNY → 加收 12% 费用
+  if (invoice.tax_mode === "tax_included") {
     return "上述报价含税,可开具增值税专用发票。";
   }
-  return "上述报价不含税;如需开票,可加收6%费用开具增值税普通发票或专用发票。";
+  const surchargePercent = invoice.currency === CNY_SYMBOL ? 6 : 12;
+  return `上述报价不含税;如需开票,可加收${surchargePercent}%费用开具增值税普通发票或专用发票。`;
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {
@@ -247,7 +251,7 @@ export async function renderByTemplate(
     <!-- Footer -->
     <div class="invoice-footer">
       <div class="notes-label">Notes:</div>
-      <div class="tax-note">${escapeHtml(getTaxNote(invoice.tax_mode))}</div>
+      <div class="tax-note">${escapeHtml(getTaxNote(invoice))}</div>
       ${bankHtml}
     </div>
     ${
