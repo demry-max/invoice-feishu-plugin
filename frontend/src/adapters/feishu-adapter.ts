@@ -93,6 +93,23 @@ const MAIN_TABLE_FIELDS = {
   FINAL_PDF_LINK: ["Final PDF link"],
   FINAL_BALANCE: ["Final Balance"],
   DISPLAY_CURRENCY: ["Display Currency", "展示币种"],
+  // Per spec req 3.2 — write-back targets on 业务工单/Business Ticket:
+  //   Display Currency  → Bill Display Currency
+  //   Grand Total       → Grand Total
+  BILL_DISPLAY_CURRENCY: [
+    "Bill Display Currency",
+    "Display Currency",
+    "账单展示币种",
+    "展示币种",
+  ],
+  GRAND_TOTAL: ["Grand Total", "Total", "总计", "账单总额"],
+  // Per spec req 4 — main-ticket First Payment Ratio used as installment default.
+  FIRST_PAYMENT_RATIO: [
+    "First Payment Ratio",
+    "First Payment %",
+    "首付比例",
+    "首款比例",
+  ],
   // Other main-table reads
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
@@ -222,6 +239,33 @@ const SERVICE_TABLE_FIELDS = {
     "已支付金额",
     "已收款",
   ],
+  // Per-row source currency on 任务明细表 (per spec req 3 — consultant
+  // exchange-rate lookup is per Service Name, not per ticket).
+  CURRENCY: [
+    "Currency",
+    "Source Currency",
+    "Original Currency",
+    "Bill Currency",
+    "币种",
+    "原币种",
+    "源币种",
+  ],
+  // Per-row First Payment Ratio on 任务明细表 (per spec req 4 — used as
+  // installment-payment formula default when generating consultant invoices).
+  FIRST_PAYMENT_RATIO: [
+    "First Payment Ratio",
+    "First Payment %",
+    "首付比例",
+    "首款比例",
+  ],
+  // Write-back targets (per spec req 3.2 — consultant invoice flow).
+  BILL_AMOUNT: ["Bill Amount", "账单金额", "Bill Total", "Invoice Amount"],
+  BILL_DISPLAY_CURRENCY: [
+    "Bill Display Currency",
+    "Display Currency",
+    "账单展示币种",
+    "展示币种",
+  ],
 } as const;
 
 /** Find the first alias that exists as a key in the map; returns its value. */
@@ -264,6 +308,14 @@ function nameMatches(name: string, aliases: readonly string[]): boolean {
 class RealFrontendAdapter implements FrontendFeishuAdapter {
   /** Stores main table record IDs from last getSelectedRecords call */
   private _mainRecordIds: string[] = [];
+  /**
+   * Stores 任务明细表/Task Detail List linked-service record IDs paired with
+   * their source `record_id` so per-line write-back (per spec req 3.2) can
+   * target them precisely.
+   */
+  private _serviceRecordIds: string[] = [];
+  /** Cached linked-service table id for per-line write-back. */
+  private _serviceTableId: string | null = null;
 
   getMainRecordIds(): string[] {
     return [...this._mainRecordIds];
@@ -368,6 +420,8 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
     let serviceTable;
     try {
       serviceTable = await bitable.base.getTableById(linkedTableId);
+      // Cache the linked-service table id for per-line write-back (per spec req 3.2).
+      this._serviceTableId = linkedTableId;
     } catch (err) {
       console.error("[RealFrontend] 无法打开服务报价表:", err);
       return this.fallbackSingleTableRead(
@@ -419,6 +473,11 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       ).trim();
       const mainBillingDate = toIsoDate(
         firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE),
+      );
+      // Per spec req 4 — main-ticket First Payment Ratio is the percent we
+      // display on the installment block (may differ from per-row values).
+      const mainFirstPaymentRatio = parseRatioFraction(
+        firstValue(mainFields, MAIN_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
       );
 
       console.log(
@@ -518,6 +577,13 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             final_currency: String(
               firstValue(mainFields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
             ).trim() || undefined,
+            service_currency: String(
+              firstValue(svcFields, SERVICE_TABLE_FIELDS.CURRENCY) ?? "",
+            ).trim() || undefined,
+            first_payment_ratio: parseRatioFraction(
+              firstValue(svcFields, SERVICE_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
+            ),
+            main_first_payment_ratio: mainFirstPaymentRatio,
           };
 
           allItems.push(item);
@@ -530,6 +596,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         }
       }
     }
+
+    // Snapshot the service-table record IDs in the same order as the items
+    // we just emitted, so per-line write-back can address them by index.
+    this._serviceRecordIds = allItems
+      .map((it) => it.record_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
 
     console.log("[RealFrontend] 共读取服务项:", allItems.length);
     return allItems;
@@ -617,6 +689,15 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         final_currency: String(
           firstValue(fields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
         ).trim() || undefined,
+        service_currency: String(
+          firstValue(fields, SERVICE_TABLE_FIELDS.CURRENCY) ?? "",
+        ).trim() || undefined,
+        first_payment_ratio: parseRatioFraction(
+          firstValue(fields, SERVICE_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
+        ),
+        main_first_payment_ratio: parseRatioFraction(
+          firstValue(fields, MAIN_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
+        ),
       });
     }
     return items;
@@ -751,6 +832,15 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       put(MAIN_TABLE_FIELDS.PDF_LINK, invoice.pdf_url ?? "");
       put(MAIN_TABLE_FIELDS.ADD_VAT, invoice.vat_amount);
       put(MAIN_TABLE_FIELDS.LESS_EWT, invoice.ewt_amount ?? 0);
+      // Per spec req 3.2 — write Grand Total + Bill Display Currency back to
+      // 业务工单/Business Ticket.
+      put(MAIN_TABLE_FIELDS.GRAND_TOTAL, invoice.grand_total);
+      if (invoice.display_currency) {
+        put(
+          MAIN_TABLE_FIELDS.BILL_DISPLAY_CURRENCY,
+          invoice.display_currency,
+        );
+      }
     }
 
     console.log("[RealFrontend] Write-back targets:", Object.keys(updates));
@@ -781,6 +871,95 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       "updated",
       recordIds.length,
       "main records",
+    );
+
+    // Per spec req 3.2 — also write per-line items back to 任务明细表/Task
+    // Detail List: Bill Amount ← line_total; Bill Display Currency ←
+    // Display Currency. Consultant invoices only (final-payment uses a
+    // different field set).
+    if (
+      invoice.invoice_type !== "final_payment" &&
+      this._serviceTableId &&
+      this._serviceRecordIds.length > 0
+    ) {
+      await this.writeBackServiceLines(invoice);
+    }
+  }
+
+  /**
+   * Per-line write-back for consultant invoices (per spec req 3.2): writes
+   * each invoice item's Total back to 任务明细表/Task Detail List.Bill Amount
+   * and the chosen Display Currency to Bill Display Currency.
+   */
+  private async writeBackServiceLines(invoice: Invoice): Promise<void> {
+    if (!this._serviceTableId) return;
+    const bitable = await this.getBitable();
+    let serviceTable;
+    try {
+      serviceTable = await bitable.base.getTableById(this._serviceTableId);
+    } catch (err) {
+      console.warn(
+        "[RealFrontend] Per-line write-back: cannot open service table:",
+        err,
+      );
+      return;
+    }
+
+    const fieldMetaList = await serviceTable.getFieldMetaList();
+    const fieldByName = new Map(fieldMetaList.map((f) => [f.name, f.id]));
+    const billAmountFieldId = firstId(
+      fieldByName,
+      SERVICE_TABLE_FIELDS.BILL_AMOUNT,
+    );
+    const billDisplayCurrencyFieldId = firstId(
+      fieldByName,
+      SERVICE_TABLE_FIELDS.BILL_DISPLAY_CURRENCY,
+    );
+
+    if (!billAmountFieldId && !billDisplayCurrencyFieldId) {
+      console.warn(
+        "[RealFrontend] Per-line write-back: neither Bill Amount nor Bill Display Currency field found on 任务明细表",
+      );
+      return;
+    }
+
+    // Build a map of service record_id → invoice item line_total so we only
+    // touch rows that are actually part of this invoice.
+    const lineTotalByRecord = new Map<string, number>();
+    invoice.items.forEach((it, idx) => {
+      const recId = invoice.source_record_ids?.[idx] ?? this._serviceRecordIds[idx];
+      if (recId) lineTotalByRecord.set(recId, it.line_total);
+    });
+
+    let success = 0;
+    let failure = 0;
+    for (const recordId of this._serviceRecordIds) {
+      const lineUpdates: Record<string, unknown> = {};
+      const total = lineTotalByRecord.get(recordId);
+      if (typeof total === "number" && billAmountFieldId) {
+        lineUpdates[billAmountFieldId] = total;
+      }
+      if (invoice.display_currency && billDisplayCurrencyFieldId) {
+        lineUpdates[billDisplayCurrencyFieldId] = invoice.display_currency;
+      }
+      if (Object.keys(lineUpdates).length === 0) continue;
+      try {
+        await serviceTable.setRecord(recordId, { fields: lineUpdates });
+        success += 1;
+      } catch (err) {
+        failure += 1;
+        console.error(
+          "[RealFrontend] Per-line write-back failed for record:",
+          recordId,
+          err,
+        );
+      }
+    }
+    console.log(
+      "[RealFrontend] Per-line write-back complete — success:",
+      success,
+      "failure:",
+      failure,
     );
   }
 }
@@ -962,6 +1141,28 @@ function parseDiscountPercent(value: unknown): number {
     return num < 1 ? num * 100 : num;
   }
   return 0;
+}
+
+/**
+ * Parse a ratio value (e.g. First Payment Ratio) and return it as a fraction
+ * in [0, 1]. Accepts numbers ("0.5"), percent strings ("50%"), or large
+ * numbers (50 → 0.5). Returns undefined for empty/invalid input so callers
+ * can distinguish "not set" from "set to zero".
+ */
+function parseRatioFraction(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return undefined;
+    return value > 1 ? value / 100 : value;
+  }
+  if (typeof value === "string") {
+    const cleaned = value.replace(/%/g, "").trim();
+    if (cleaned === "") return undefined;
+    const num = Number(cleaned);
+    if (!Number.isFinite(num)) return undefined;
+    return num > 1 ? num / 100 : num;
+  }
+  return undefined;
 }
 
 export function createFrontendAdapter(): FrontendFeishuAdapter {

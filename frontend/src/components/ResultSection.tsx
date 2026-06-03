@@ -80,6 +80,19 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
     setTimeout(() => setStatus(""), 2000);
   };
 
+  const handleDownloadWord = async (): Promise<void> => {
+    if (!result.word_url) return;
+    setStatus("下载 Word 中… / Downloading Word…");
+    try {
+      await fetchAndDownload(result.word_url, `${invoiceNo}.docx`);
+      setStatus("");
+    } catch (err) {
+      setStatus(
+        `下载失败 / Download failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
   return (
     <div className="result-card">
       <div className="result-card-head">
@@ -96,6 +109,15 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
         <button className="btn btn-secondary" onClick={handleOpenHtml}>
           📄 打开 HTML / Open HTML
         </button>
+        {result.word_url && (
+          <button
+            className="btn btn-secondary"
+            onClick={handleDownloadWord}
+            title={result.word_url}
+          >
+            📝 下载 Word / Download Word
+          </button>
+        )}
         {result.pdf_url && (
           <button
             className="btn btn-secondary"

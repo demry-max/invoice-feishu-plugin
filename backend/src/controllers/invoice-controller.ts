@@ -5,6 +5,7 @@ import {
   generateInvoice,
   getInvoiceHtml,
   getInvoicePdf,
+  getInvoiceDocx,
   listInvoicesForSourceRecord,
 } from '../services/invoice-service';
 import type { Invoice } from '../types';
@@ -40,7 +41,20 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       return;
     }
 
-    if (!body.bill_to) {
+    // Per spec req 1: consultant invoices accept EITHER bill_to OR company_name.
+    // Final-payment invoices still require bill_to.
+    const hasBillTo = typeof body.bill_to === 'string' && body.bill_to.trim().length > 0;
+    const hasCompanyName = typeof body.company_name === 'string' && body.company_name.trim().length > 0;
+    const isConsultant = body.invoice_type !== 'final_payment';
+    if (isConsultant) {
+      if (!hasBillTo && !hasCompanyName) {
+        res.status(400).json({
+          success: false,
+          error: 'bill_to or company_name is required for consultant invoices',
+        } as ApiResponse<null>);
+        return;
+      }
+    } else if (!hasBillTo) {
       res.status(400).json({ success: false, error: 'bill_to is required' } as ApiResponse<null>);
       return;
     }
@@ -98,6 +112,32 @@ export async function handleGetPdf(req: Request, res: Response): Promise<void> {
     res.send(pdf);
   } catch (err) {
     console.error('GetPdf error:', err);
+    res.status(500).json({ success: false, error: String(err) } as ApiResponse<null>);
+  }
+}
+
+/** GET /api/invoices/:invoiceNo/docx — per spec req 2 (consultant invoices) */
+export async function handleGetDocx(req: Request, res: Response): Promise<void> {
+  try {
+    const invoiceNo = req.params['invoiceNo'] as string;
+    const docx = await getInvoiceDocx(invoiceNo);
+
+    if (!docx) {
+      res.status(404).json({ success: false, error: 'Invoice not found' } as ApiResponse<null>);
+      return;
+    }
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${invoiceNo}.docx"`,
+    );
+    res.send(docx);
+  } catch (err) {
+    console.error('GetDocx error:', err);
     res.status(500).json({ success: false, error: String(err) } as ApiResponse<null>);
   }
 }

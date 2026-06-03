@@ -5,6 +5,7 @@ import {
   handleGenerate,
   handleGetHtml,
   handleGetPdf,
+  handleGetDocx,
   handleGetMockItems,
   handleListBySource,
 } from "../controllers/invoice-controller";
@@ -18,6 +19,7 @@ router.post("/invoices/generate", handleGenerate);
 router.get("/invoices/by-source/:recordId", handleListBySource);
 router.get("/invoices/:invoiceNo/html", handleGetHtml);
 router.get("/invoices/:invoiceNo/pdf", handleGetPdf);
+router.get("/invoices/:invoiceNo/docx", handleGetDocx);
 router.get("/mock/source-items", handleGetMockItems);
 
 /** GET /api/bank-accounts - 获取可用银行账户列表 */

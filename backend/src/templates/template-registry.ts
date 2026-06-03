@@ -100,19 +100,59 @@ const CNY_SYMBOL = "¥";
  * 不含税 (tax_excluded) → 加税开票附加费按币种区分: 人民币 6%, 其他币种 12%
  */
 function getTaxNote(invoice: Invoice): string {
-  // 2026-05-29 spec (顾问/Consultant 账单备注):
-  //   含税   (tax_included)                 → 上述报价含税, 可开具增值税专用发票
-  //   不含税 (tax_excluded) + Currency = CNY → 加收 6% 费用
-  //   不含税 (tax_excluded) + Currency ≠ CNY → 加收 12% 费用
+  // Per spec req 5 (顾问/Consultant 账单备注):
+  //   含税   (tax_included)                            → 上述报价含税, 可开具增值税专用发票
+  //   不含税 (tax_excluded) + Display Currency = CNY  → 加收 6% 费用
+  //   不含税 (tax_excluded) + Display Currency ≠ CNY  → 加收 12% 费用
+  //
+  // When Display Currency is not explicitly chosen ("原始 / Original"),
+  // fall back to the rendered currency symbol so the rule still applies
+  // (¥ → 6%; anything else → 12%).
   if (invoice.tax_mode === "tax_included") {
     return "上述报价含税,可开具增值税专用发票。";
   }
-  const surchargePercent = invoice.currency === CNY_SYMBOL ? 6 : 12;
+  const isCny = invoice.display_currency
+    ? invoice.display_currency.toUpperCase() === "CNY"
+    : invoice.currency === CNY_SYMBOL;
+  const surchargePercent = isCny ? 6 : 12;
   return `上述报价不含税;如需开票,可加收${surchargePercent}%费用开具增值税普通发票或专用发票。`;
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {
   return `${currency}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * Format a fraction in [0, 1] as a percent string. 0.5 → "50%". Uses up to
+ * 2 decimals; trailing zeros stripped.
+ */
+function formatRatioPercent(fraction: number): string {
+  const pct = fraction * 100;
+  const rounded = Math.round(pct * 100) / 100;
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toString()}%`;
+}
+
+/**
+ * Render the optional installment-payment block shown below Grand Total
+ * for consultant invoices (per spec req 4). Returns "" when the invoice
+ * has no installment_info attached.
+ */
+function buildInstallmentHtml(invoice: Invoice): string {
+  const info = invoice.installment_info;
+  if (!info) return "";
+  const c = invoice.currency || "¥";
+  const firstPct = formatRatioPercent(info.first_payment_ratio);
+  const finalPct = formatRatioPercent(info.final_payment_ratio);
+  const firstAmt = formatAmount(info.first_payment_amount, c);
+  const finalAmt = formatAmount(info.final_payment_amount, c);
+  const days = info.final_payment_business_days;
+  const zhText = `分期付款： 首款：服务费的${firstPct}，即金额${firstAmt}，于服务启动之前支付； 尾款：服务费的${finalPct}，即金额${finalAmt}，于服务完成之后的${days}个工作日内支付。`;
+  const enText = `Installment Payment: First payment: ${firstPct} of the service fee, i.e., ${firstAmt}, payable before the service commences. Final payment: ${finalPct} of the service fee, i.e., ${finalAmt}, payable within ${days} business days after the service is completed.`;
+  return `
+    <div class="installment-block">
+      <div class="installment-zh">${escapeHtml(zhText)}</div>
+      <div class="installment-en">${escapeHtml(enText)}</div>
+    </div>`;
 }
 
 // ============================================================
@@ -164,10 +204,11 @@ export async function renderByTemplate(
   // Bank info section
   const bankHtml = buildBankHtml(bankAccount);
 
-  // QR code (data URI) — links to the HTML version of this invoice
-  const qrDataUri = invoice.html_url
-    ? await renderQrDataUri(invoice.html_url)
-    : "";
+  // QR code intentionally omitted for consultant invoices (per spec req 6):
+  // a stale QR scanned by a client could expose a regenerated amount on a
+  // later version of the same invoice no, which is misleading. Final-payment
+  // invoices keep the QR (see renderFinalPaymentHtml).
+  const qrDataUri = "";
 
   const brandLabel =
     templateId === "starlight"
@@ -247,6 +288,9 @@ export async function renderByTemplate(
 
     <!-- Totals -->
     ${totalsHtml}
+
+    <!-- Installment payment block (per spec req 4 — consultant only, when opted in) -->
+    ${buildInstallmentHtml(invoice)}
 
     <!-- Footer -->
     <div class="invoice-footer">

@@ -30,6 +30,7 @@ import { getCompanyConfigForTemplate } from "../utils/config";
 import { renderByTemplate } from "../templates/template-registry";
 import { findBankAccount, getDefaultBankAccount } from "../utils/bank-accounts";
 import { htmlToPdf } from "./pdf-service";
+import { htmlToDocx } from "./docx-service";
 import { openStore, type InvoiceStore } from "../utils/invoice-store";
 
 const DATA_DIR =
@@ -64,6 +65,7 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   CNY: "¥",
   USD: "$",
   PHP: "₱",
+  THB: "฿",
 };
 
 function resolveBankAccount(
@@ -130,13 +132,123 @@ function resolveConsultantEwtRate(
 }
 
 function pickCurrencySymbol(
-  invoiceType: InvoiceType,
+  _invoiceType: InvoiceType,
   displayCurrency: string | undefined,
   fallback: string,
 ): string {
-  if (invoiceType !== "final_payment") return fallback;
+  // Per spec req 3 — Display Currency now applies to BOTH invoice types
+  // (previously gated to final_payment only).
   if (!displayCurrency) return fallback;
   return CURRENCY_SYMBOL[displayCurrency.toUpperCase()] ?? fallback;
+}
+
+/**
+ * Default business-day window before the final installment payment is due.
+ * Per spec req 4 — '{x} 个工作日内支付' defaults to 30 when the user has not
+ * overridden it. Operators can override per invoice via req.installment.
+ */
+const DEFAULT_FINAL_PAYMENT_BUSINESS_DAYS = 30;
+
+/**
+ * Compute installment-payment info for consultant invoices (per spec req 4).
+ * The formula is applied per-line so that mixed-ratio service rows produce
+ * an accurate first-payment amount; the displayed first-payment percentage
+ * comes from the main ticket. All five values are overridable from req.installment.
+ */
+function computeInstallmentInfo(
+  sources: ReadonlyArray<{
+    first_payment_ratio?: number;
+    main_first_payment_ratio?: number;
+  }>,
+  items: ReadonlyArray<{ line_total: number }>,
+  vatAmount: number,
+  ewtAmount: number,
+  grandTotal: number,
+  override?: Partial<{
+    first_payment_ratio: number;
+    final_payment_ratio: number;
+    first_payment_amount: number;
+    final_payment_amount: number;
+    final_payment_business_days: number;
+  }>,
+): {
+  first_payment_ratio: number;
+  final_payment_ratio: number;
+  first_payment_amount: number;
+  final_payment_amount: number;
+  final_payment_business_days: number;
+} {
+  // Display percentage comes from the main ticket; fall back to the first
+  // non-empty per-row ratio when missing; finally to 0.5 (50/50 split).
+  const fallbackMainRatio = sources.find(
+    (s) => typeof s.main_first_payment_ratio === "number",
+  )?.main_first_payment_ratio;
+  const fallbackRowRatio = sources.find(
+    (s) => typeof s.first_payment_ratio === "number",
+  )?.first_payment_ratio;
+  const defaultFirstRatio = clampRatio(
+    typeof fallbackMainRatio === "number"
+      ? fallbackMainRatio
+      : typeof fallbackRowRatio === "number"
+        ? fallbackRowRatio
+        : 0.5,
+  );
+
+  // Amount uses per-line ratios where present (per spec); fall back to the
+  // main-ticket ratio per line otherwise.
+  const perLineFirstSum = sources.reduce((acc, s, idx) => {
+    const lineTotal = items[idx]?.line_total ?? 0;
+    const ratio = clampRatio(
+      typeof s.first_payment_ratio === "number"
+        ? s.first_payment_ratio
+        : typeof s.main_first_payment_ratio === "number"
+          ? s.main_first_payment_ratio
+          : defaultFirstRatio,
+    );
+    return acc + lineTotal * ratio;
+  }, 0);
+
+  const defaultFirstAmount = round2(perLineFirstSum + vatAmount - ewtAmount);
+  const defaultFinalAmount = round2(grandTotal - defaultFirstAmount);
+
+  const firstRatio = clampRatio(
+    typeof override?.first_payment_ratio === "number"
+      ? override.first_payment_ratio
+      : defaultFirstRatio,
+  );
+  const finalRatio = clampRatio(
+    typeof override?.final_payment_ratio === "number"
+      ? override.final_payment_ratio
+      : 1 - firstRatio,
+  );
+  const firstAmount =
+    typeof override?.first_payment_amount === "number"
+      ? round2(override.first_payment_amount)
+      : defaultFirstAmount;
+  const finalAmount =
+    typeof override?.final_payment_amount === "number"
+      ? round2(override.final_payment_amount)
+      : defaultFinalAmount;
+  const businessDays =
+    typeof override?.final_payment_business_days === "number" &&
+    override.final_payment_business_days > 0
+      ? Math.round(override.final_payment_business_days)
+      : DEFAULT_FINAL_PAYMENT_BUSINESS_DAYS;
+
+  return {
+    first_payment_ratio: firstRatio,
+    final_payment_ratio: finalRatio,
+    first_payment_amount: firstAmount,
+    final_payment_amount: finalAmount,
+    final_payment_business_days: businessDays,
+  };
+}
+
+function clampRatio(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
 }
 
 export function previewInvoice(req: PreviewRequest): PreviewResponse {
@@ -164,6 +276,7 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     invoiceType,
     exchangeRateBill: rateBill,
     exchangeRateFinal: rateFinal,
+    exchangeRatesPerRow: req.exchange_rates_per_row,
   });
   const subtotal = calcSubtotal(items);
   const currency = pickCurrencySymbol(
@@ -224,6 +337,15 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     taxable_subtotal: taxableSubtotal,
     ewt_rate: ewtRate,
     ewt_amount: ewtAmount,
+    // Always expose installment defaults in the preview so the UI can show
+    // them inline even when the toggle is off (per spec req 4).
+    installment_info: computeInstallmentInfo(
+      req.items,
+      items,
+      vatAmount,
+      ewtAmount,
+      grandTotal,
+    ),
   };
 }
 
@@ -271,6 +393,7 @@ export async function generateInvoice(
     invoiceType,
     exchangeRateBill: rateBill,
     exchangeRateFinal: rateFinal,
+    exchangeRatesPerRow: req.exchange_rates_per_row,
   });
   const subtotal = calcSubtotal(items);
 
@@ -349,13 +472,34 @@ export async function generateInvoice(
       taxable_subtotal: taxableSubtotal,
       ewt_rate: ewtRate,
       ewt_amount: ewtAmount,
+      // Per spec req 3 — Display Currency is recorded on consultant invoices
+      // too so write-back can mirror it to Business Ticket.Bill Display Currency
+      // and Task Detail List.Bill Display Currency.
+      display_currency: req.display_currency,
     };
+
+    // Per spec req 4 — only attach installment info when the user opted in.
+    if (req.show_installment) {
+      invoice.installment_info = computeInstallmentInfo(
+        req.items,
+        items,
+        vatAmount,
+        ewtAmount,
+        grandTotal,
+        req.installment,
+      );
+    }
   }
 
   // Compute URLs BEFORE rendering so QR can point at the correct html_url
   const baseUrl = process.env.BASE_URL || "http://localhost:3000";
   invoice.html_url = `${baseUrl}/api/invoices/${invoiceNo}/html`;
   invoice.pdf_url = `${baseUrl}/api/invoices/${invoiceNo}/pdf`;
+  // Per spec req 2 — also expose a Word (.docx) link for consultant invoices.
+  // Final-payment invoices skip the Word artifact (spec scopes this to consultant).
+  if (invoiceType === "consultant") {
+    invoice.word_url = `${baseUrl}/api/invoices/${invoiceNo}/docx`;
+  }
 
   const html = await renderByTemplate(templateId, invoice, config, bankAccount);
   const htmlFilename = `${invoiceNo}.html`;
@@ -365,12 +509,29 @@ export async function generateInvoice(
   const pdfFilename = `${invoiceNo}.pdf`;
   fs.writeFileSync(path.join(OUTPUT_DIR, pdfFilename), pdfBuffer);
 
+  // Eagerly generate the .docx for consultant invoices so the link works
+  // immediately (and any rendering failure surfaces at generate-time, not
+  // later when a finance user clicks the link).
+  if (invoiceType === "consultant") {
+    try {
+      const docxBuffer = await htmlToDocx(html);
+      fs.writeFileSync(path.join(OUTPUT_DIR, `${invoiceNo}.docx`), docxBuffer);
+    } catch (err) {
+      console.warn(
+        "[invoice-service] .docx generation failed (non-fatal):",
+        err,
+      );
+      invoice.word_url = undefined;
+    }
+  }
+
   invoiceStore.insert(invoice);
 
   return {
     invoice_no: invoiceNo,
     html_url: invoice.html_url,
     pdf_url: invoice.pdf_url,
+    word_url: invoice.word_url,
     invoice,
   };
 }
@@ -389,6 +550,30 @@ export function getInvoicePdf(invoiceNo: string): Buffer | null {
     return fs.readFileSync(pdfPath);
   }
   return null;
+}
+
+/**
+ * Per spec req 2 — return the .docx blob for an invoice. Falls back to
+ * lazily regenerating it from the stored HTML if the .docx was deleted
+ * or the invoice was generated before .docx support shipped.
+ */
+export async function getInvoiceDocx(
+  invoiceNo: string,
+): Promise<Buffer | null> {
+  const docxPath = path.join(OUTPUT_DIR, `${invoiceNo}.docx`);
+  if (fs.existsSync(docxPath)) {
+    return fs.readFileSync(docxPath);
+  }
+  const html = getInvoiceHtml(invoiceNo);
+  if (!html) return null;
+  try {
+    const docxBuffer = await htmlToDocx(html);
+    fs.writeFileSync(docxPath, docxBuffer);
+    return docxBuffer;
+  } catch (err) {
+    console.warn("[invoice-service] lazy .docx generation failed:", err);
+    return null;
+  }
 }
 
 export function getInvoice(invoiceNo: string): Invoice | undefined {

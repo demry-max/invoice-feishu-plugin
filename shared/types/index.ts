@@ -12,13 +12,13 @@ export type TaxMode = "tax_excluded" | "tax_included";
 export type InvoiceType = "consultant" | "final_payment";
 
 /** 支持的展示币种 */
-export type DisplayCurrency = "CNY" | "USD" | "PHP";
+export type DisplayCurrency = "CNY" | "USD" | "PHP" | "THB";
 
 /** 支持的 VAT 比例（顾问账单可选） */
 export type VatRatePercent = 1 | 3 | 6 | 12;
 
 /** 支持的 EWT 比例（顾问账单可选） */
-export type EwtRatePercent = 2 | 10 | 15;
+export type EwtRatePercent = 0 | 2 | 10 | 15;
 
 /** 银行账户 */
 export interface BankAccount {
@@ -67,6 +67,26 @@ export interface SourceItem {
   source_currency?: string;
   // Source record's "final" currency (Actual Amount Incurred)
   final_currency?: string;
+  /**
+   * Per-row source currency from the 任务明细表/Task Detail List `Currency`
+   * column (per spec req 3). Used by the consultant flow to look up an
+   * exchange rate per Service Name; falls back to `source_currency` (main
+   * table Bill Currency) when absent.
+   */
+  service_currency?: string;
+  /**
+   * Per-row First Payment Ratio from the 任务明细表/Task Detail List
+   * `First Payment Ratio` column (per spec req 4). Used as the per-line
+   * default when computing the first-payment amount for the installment block.
+   * Expressed as a fraction in [0, 1].
+   */
+  first_payment_ratio?: number;
+  /**
+   * Main-ticket First Payment Ratio (per spec req 4 — display percentage).
+   * Replicated onto each SourceItem so the backend doesn't need a separate
+   * request field. Expressed as a fraction in [0, 1].
+   */
+  main_first_payment_ratio?: number;
 }
 
 /** 汇率表行：按账单生成日期在 [effective_date, expiry_date] 区间内查找 */
@@ -118,6 +138,8 @@ export interface Invoice {
   bank_account: BankAccount;
   html_url?: string;
   pdf_url?: string;
+  /** Per spec req 2 — Word (.docx) URL for consultant invoices. */
+  word_url?: string;
   source_record_ids: string[];
   created_at: string;
   status: string;
@@ -138,6 +160,8 @@ export interface Invoice {
   // Client header for final-payment template
   client_name?: string;
   client_company?: string;
+  /** Optional installment block to render under Grand Total (consultant only). */
+  installment_info?: InstallmentInfo;
 }
 
 /** 公司信息配置 */
@@ -170,6 +194,14 @@ export interface PreviewRequest {
   exchange_rate_bill?: number;
   /** Rate applied to Final bill currency → display (Actual Amount Incurred) */
   exchange_rate_final?: number;
+  /**
+   * Consultant per-row exchange rates, parallel to `items`. When set, each
+   * service row's `price` is multiplied by the matching rate before further
+   * calculation. Used when each Service Name has its own source currency
+   * (per spec req 3). When undefined or shorter than items, missing slots
+   * default to 1 (no conversion).
+   */
+  exchange_rates_per_row?: number[];
   invoice_date?: string;
 }
 
@@ -193,6 +225,21 @@ export interface PreviewResponse {
   display_currency?: string;
   total_balance?: number;
   final_balance?: number;
+  installment_info?: InstallmentInfo;
+}
+
+/** 顾问账单分期付款数据（per spec req 4） */
+export interface InstallmentInfo {
+  /** First-payment ratio as a fraction (e.g. 0.5 for 50%). */
+  first_payment_ratio: number;
+  /** Final-payment ratio (1 - first). */
+  final_payment_ratio: number;
+  /** First-payment amount in display currency. */
+  first_payment_amount: number;
+  /** Final-payment amount in display currency. */
+  final_payment_amount: number;
+  /** Business days the final payment is due after service completion. */
+  final_payment_business_days: number;
 }
 
 /** 生成账单请求 */
@@ -213,6 +260,12 @@ export interface GenerateRequest {
   exchange_rate?: number;
   exchange_rate_bill?: number;
   exchange_rate_final?: number;
+  /** Per-row consultant exchange rates parallel to `items`. See PreviewRequest. */
+  exchange_rates_per_row?: number[];
+  /** When true, render the installment-payment block under Grand Total (consultant only). */
+  show_installment?: boolean;
+  /** Editable installment values (per spec req 4). Falls back to formula defaults. */
+  installment?: Partial<InstallmentInfo>;
 }
 
 /** 生成账单响应 */
@@ -220,6 +273,8 @@ export interface GenerateResponse {
   invoice_no: string;
   html_url: string;
   pdf_url: string;
+  /** Per spec req 2 — consultant invoices include a Word (.docx) link. */
+  word_url?: string;
   invoice: Invoice;
 }
 

@@ -338,6 +338,24 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* Installment payment block (per spec req 4) */
+.installment-block {
+  margin: 14px 0 4px 0;
+  padding: 12px 14px;
+  background: #FEF3F2;
+  border-left: 3px solid #B91C1C;
+  font-size: 9pt;
+  line-height: 1.55;
+  color: #1F2937;
+  page-break-inside: avoid;
+}
+.installment-block .installment-zh {
+  margin-bottom: 6px;
+}
+.installment-block .installment-en {
+  color: #4B5563;
+}
+
 /* QR + DRAFT watermark shared */
 .qr-block {
   display: flex;

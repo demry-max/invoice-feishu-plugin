@@ -35,6 +35,12 @@ export function buildInvoiceItems(
     exchangeRateFinal?: number;
     /** @deprecated — pass exchangeRateBill + exchangeRateFinal instead. */
     exchangeRate?: number;
+    /**
+     * Per-row consultant exchange rates parallel to `sources`. When set,
+     * each row's `price` is multiplied by the matching rate (per spec req 3).
+     * Missing/short slots default to 1.
+     */
+    exchangeRatesPerRow?: number[];
   } = {},
 ): InvoiceItem[] {
   const {
@@ -42,18 +48,23 @@ export function buildInvoiceItems(
     exchangeRate = 1,
     exchangeRateBill = exchangeRate,
     exchangeRateFinal = exchangeRate,
+    exchangeRatesPerRow,
   } = opts;
   const scaleBill = (v: number | undefined): number =>
     round2((v ?? 0) * exchangeRateBill);
   const scaleFinal = (v: number | undefined): number =>
     round2((v ?? 0) * exchangeRateFinal);
+  const consultantRate = (idx: number): number => {
+    const r = exchangeRatesPerRow?.[idx];
+    return typeof r === "number" && r > 0 ? r : 1;
+  };
 
   return sources.map((s, idx) => {
-    const displayPrice = scaleBill(s.price);
     const qty = Math.max(s.qty, 1);
     const discount = s.discount_percent || 0;
 
     if (invoiceType === "final_payment") {
+      const displayPrice = scaleBill(s.price);
       const amountBilled = scaleBill(s.amount_billed ?? s.price);
       const actual = scaleFinal(s.actual_amount_incurred);
       const paid = scaleBill(s.amount_paid);
@@ -80,7 +91,11 @@ export function buildInvoiceItems(
       };
     }
 
-    // Consultant — legacy single rate (effectively no conversion for consultant)
+    // Consultant — per-row conversion (per spec req 3). When
+    // exchangeRatesPerRow is not provided, the rate defaults to 1 and
+    // displayPrice == s.price (legacy behavior).
+    const rowRate = consultantRate(idx);
+    const displayPrice = round2((s.price ?? 0) * rowRate);
     return {
       invoice_no: invoiceNo,
       service: s.service,
