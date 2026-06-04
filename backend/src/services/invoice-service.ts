@@ -96,14 +96,30 @@ function resolveConsultantVatRate(
  * undefined when none exists.
  */
 function findExistingInvoiceNoForType(
-  sources: ReadonlyArray<{ record_id?: string }>,
+  sources: ReadonlyArray<{ record_id?: string; bill_number?: string }>,
   invoiceType: InvoiceType,
 ): string | undefined {
+  // Source-of-truth #1 — local invoice store (covers same-process regenerate).
   for (const s of sources) {
     if (!s.record_id) continue;
     const matches = invoiceStore.listBySourceRecord(s.record_id);
     const same = matches.find((i) => i.invoice_type === invoiceType);
     if (same) return same.invoice_no;
+  }
+  // Source-of-truth #2 — Bitable's own Bill Number column (covers the case
+  // where the local SQLite was wiped by a container rebuild but the Bitable
+  // row still carries the previously-issued invoice number). Without this,
+  // a regenerate would mint a new random invoice number and the previous
+  // PDF/HTML files plus the link the customer received would point at a
+  // stale row that no longer matches what's on Bitable.
+  //
+  // Only consultant invoices use the main-table "Bill Number" column; final-
+  // payment uses Final Bill Number which the adapter maps to its own field.
+  if (invoiceType === "consultant") {
+    for (const s of sources) {
+      const candidate = (s.bill_number ?? "").trim();
+      if (candidate) return candidate;
+    }
   }
   return undefined;
 }
