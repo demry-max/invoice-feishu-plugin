@@ -257,6 +257,16 @@ const App: React.FC = () => {
     setCompanyConfig(newConfig);
   }, [templateId]);
 
+  // Consultant invoices must use an explicit Display Currency so per-row
+  // FX conversion applies (the "原始/Original" option is hidden in the UI).
+  // Auto-default to CNY when switching to consultant with no currency picked
+  // — covers both the initial render and users whose persisted state was "".
+  useEffect(() => {
+    if (invoiceType === "consultant" && !displayCurrency) {
+      setDisplayCurrency("CNY");
+    }
+  }, [invoiceType, displayCurrency, setDisplayCurrency]);
+
   useEffect(() => {
     if (sourceItems.length > 0) {
       const first = sourceItems[0];
@@ -776,12 +786,20 @@ const App: React.FC = () => {
                   )}
                 </label>
                 <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  <button
-                    className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
-                    onClick={() => setDisplayCurrency("")}
-                  >
-                    原始 / Original
-                  </button>
+                  {/*
+                    Per spec: hide the "原始 / Original" option for consultant
+                    invoices — they must pick an explicit Display Currency so
+                    per-row FX conversion applies. Final-payment invoices keep
+                    Original as the no-conversion mode.
+                  */}
+                  {invoiceType === "final_payment" && (
+                    <button
+                      className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setDisplayCurrency("")}
+                    >
+                      原始 / Original
+                    </button>
+                  )}
                   {CURRENCY_OPTIONS.map((c) => (
                     <button
                       key={c}

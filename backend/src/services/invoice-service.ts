@@ -45,16 +45,10 @@ const invoiceStore: InvoiceStore = openStore(
   path.join(DATA_DIR, "invoices.db"),
 );
 
-/**
- * Per-month minimum-suffix floors requested by finance (账单调整需求 §2e).
- * The counter for that month seeds to max(DB max, floor) so the next generated
- * invoice number is at least floor + 1.
- *
- *   "建议从 202605-12796 开始" → floor 12795 for 202605.
- */
-const INVOICE_NO_FLOORS: Record<string, number> = {
-  "202605": 12795,
-};
+// Per-month minimum-suffix floors are no longer needed: the new generator
+// uses a random 5-digit suffix in [10000, 99999] and retries on collision
+// against the local invoice store, so it can't reuse a stale sequential
+// number that other environments already issued.
 
 const DEFAULT_BANK_BY_TEMPLATE: Record<BrandTemplateId, string> = {
   feilong: "feilong-minsheng",
@@ -357,12 +351,15 @@ export async function generateInvoice(
   // to both consultant and final_payment.
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const existingNo = findExistingInvoiceNoForType(req.items, invoiceType);
+  // Use a random 5-digit suffix and retry on collision against the local
+  // invoice store. The 90 000-value space avoids reusing numbers issued
+  // either by previous container instances or hand-edited rows on Bitable
+  // (whose lowest sequential numbers like 00001 are well outside the random
+  // 10000–99999 range used here).
   const invoiceNo =
     existingNo ??
-    generateInvoiceNo((monthKey) => {
-      const fromDb = invoiceStore.getMaxSuffixForMonth(monthKey);
-      const floor = INVOICE_NO_FLOORS[monthKey] ?? 0;
-      return Math.max(fromDb, floor);
+    generateInvoiceNo({
+      exists: (candidate) => invoiceStore.get(candidate) !== undefined,
     });
   const invoiceDate =
     req.invoice_date || new Date().toISOString().split("T")[0];
