@@ -28,6 +28,7 @@ import {
 import { generateInvoiceNo } from "../utils/invoice-no";
 import { getCompanyConfigForTemplate } from "../utils/config";
 import { renderByTemplate } from "../templates/template-registry";
+import { renderInvoiceDocxHtml } from "../templates/docx-template";
 import { findBankAccount, getDefaultBankAccount } from "../utils/bank-accounts";
 import { htmlToPdf } from "./pdf-service";
 import { htmlToDocx } from "./docx-service";
@@ -524,10 +525,13 @@ export async function generateInvoice(
 
   // Eagerly generate the .docx for consultant invoices so the link works
   // immediately (and any rendering failure surfaces at generate-time, not
-  // later when a finance user clicks the link).
+  // later when a finance user clicks the link). We render a dedicated
+  // DOCX-friendly HTML — feeding the flexbox-heavy PDF/HTML template to
+  // html-to-docx produced broken two-page output and split the bank block.
   if (invoiceType === "consultant") {
     try {
-      const docxBuffer = await htmlToDocx(html);
+      const docxHtml = renderInvoiceDocxHtml(invoice, config, bankAccount);
+      const docxBuffer = await htmlToDocx(docxHtml);
       fs.writeFileSync(path.join(OUTPUT_DIR, `${invoiceNo}.docx`), docxBuffer);
     } catch (err) {
       console.warn(
@@ -577,10 +581,16 @@ export async function getInvoiceDocx(
   if (fs.existsSync(docxPath)) {
     return fs.readFileSync(docxPath);
   }
-  const html = getInvoiceHtml(invoiceNo);
-  if (!html) return null;
+  // Lazy regenerate: rebuild from the stored Invoice object (NOT the saved
+  // HTML, which is the flexbox-heavy PDF template — see docx-service for
+  // why that produced broken Word output).
+  const invoice = invoiceStore.get(invoiceNo);
+  if (!invoice) return null;
   try {
-    const docxBuffer = await htmlToDocx(html);
+    const config = getCompanyConfigForTemplate(invoice.template_id);
+    const bankAccount = invoice.bank_account;
+    const docxHtml = renderInvoiceDocxHtml(invoice, config, bankAccount);
+    const docxBuffer = await htmlToDocx(docxHtml);
     fs.writeFileSync(docxPath, docxBuffer);
     return docxBuffer;
   } catch (err) {
