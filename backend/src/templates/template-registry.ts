@@ -574,8 +574,12 @@ async function renderFinalPaymentHtml(
 
     <div class="invoice-meta" style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div class="bill-to">
-        <div><strong>Client Name:</strong> ${escapeHtml(clientName)}</div>
-        <div><strong>Client Company:</strong> ${escapeHtml(clientCompany)}</div>
+        ${clientName && clientName.trim()
+          ? `<div><strong>Client Name:</strong> ${escapeHtml(clientName)}</div>`
+          : ""}
+        ${clientCompany && clientCompany.trim()
+          ? `<div><strong>Client Company:</strong> ${escapeHtml(clientCompany)}</div>`
+          : ""}
       </div>
       <div class="invoice-badges">
         <div class="badge">

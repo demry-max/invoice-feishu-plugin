@@ -84,21 +84,15 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Per spec req 1: consultant invoices accept EITHER bill_to OR company_name.
-    // Final-payment invoices still require bill_to.
+    // Both invoice types accept EITHER bill_to OR company_name (consultant
+    // req 1 + final-payment: bill_to is now non-required).
     const hasBillTo = typeof body.bill_to === 'string' && body.bill_to.trim().length > 0;
     const hasCompanyName = typeof body.company_name === 'string' && body.company_name.trim().length > 0;
-    const isConsultant = body.invoice_type !== 'final_payment';
-    if (isConsultant) {
-      if (!hasBillTo && !hasCompanyName) {
-        res.status(400).json({
-          success: false,
-          error: 'bill_to or company_name is required for consultant invoices',
-        } as ApiResponse<null>);
-        return;
-      }
-    } else if (!hasBillTo) {
-      res.status(400).json({ success: false, error: 'bill_to is required' } as ApiResponse<null>);
+    if (!hasBillTo && !hasCompanyName) {
+      res.status(400).json({
+        success: false,
+        error: 'bill_to or company_name is required',
+      } as ApiResponse<null>);
       return;
     }
 

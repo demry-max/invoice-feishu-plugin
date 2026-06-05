@@ -497,19 +497,14 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = () => {
-    // Per spec req 1: consultant invoices only need ONE of Bill To / Company Name.
-    // Final-payment invoices still require Bill To.
+    // Both invoice types only need ONE of Bill To / Company Name
+    // (consultant req 1 + final-payment: Bill To is now non-required).
     const billToOk = billTo.trim().length > 0;
     const companyOk = companyName.trim().length > 0;
-    if (invoiceType === "consultant") {
-      if (!billToOk && !companyOk) {
-        alert(
-          "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name",
-        );
-        return;
-      }
-    } else if (!billToOk) {
-      alert("请填写 Bill To / Please fill in Bill To");
+    if (!billToOk && !companyOk) {
+      alert(
+        "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name",
+      );
       return;
     }
     doGenerate(
@@ -534,15 +529,10 @@ const App: React.FC = () => {
       const cmdOrCtrl = e.metaKey || e.ctrlKey;
       if (cmdOrCtrl && e.key === "Enter") {
         if (loading || !preview || !sourceItems.length) return;
-        // Mirror handleGenerate's validation: consultant needs Bill To OR
-        // Company Name; final-payment still requires Bill To.
+        // Mirror handleGenerate: both types need Bill To OR Company Name.
         const billToOk = billTo.trim().length > 0;
         const companyOk = companyName.trim().length > 0;
-        if (invoiceType === "consultant") {
-          if (!billToOk && !companyOk) return;
-        } else if (!billToOk) {
-          return;
-        }
+        if (!billToOk && !companyOk) return;
         e.preventDefault();
         handleGenerate();
       }
@@ -590,17 +580,14 @@ const App: React.FC = () => {
 
   const blockingError = useMemo(() => {
     if (sourceItems.length === 0) return null;
+    // Both invoice types accept EITHER Bill To OR Company Name.
     const billToOk = billTo.trim().length > 0;
     const companyOk = companyName.trim().length > 0;
-    if (invoiceType === "consultant") {
-      if (!billToOk && !companyOk) {
-        return "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name";
-      }
-    } else if (!billToOk) {
-      return "请填写 Bill To / Please fill in Bill To";
+    if (!billToOk && !companyOk) {
+      return "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name";
     }
     return null;
-  }, [sourceItems.length, billTo, companyName, invoiceType]);
+  }, [sourceItems.length, billTo, companyName]);
 
   const settingsSummary = useMemo(() => {
     const parts: string[] = [
