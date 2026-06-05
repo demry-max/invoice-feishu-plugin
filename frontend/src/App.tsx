@@ -252,20 +252,117 @@ const App: React.FC = () => {
     finalCurrency !== displayCurrency &&
     rateFinal === 1;
 
+  // Final-payment per-row conversion (per spec req 1.2). Three independent
+  // source currencies may each differ per Service Name:
+  //   - row Currency          → Amount Billed + Amount Paid  (fpBillRates)
+  //   - row Final bill currency → Actual Amount Incurred      (fpActualRates)
+  //   - ticket Refunded Currency → Amount Refunded            (fpRefundedRate)
+  // Each falls back to the main-table currency, then to rate = 1.
+  const rateFor = (from: string): number => {
+    const f = (from || "").trim().toUpperCase();
+    if (!f || !displayCurrency || f === displayCurrency) return 1;
+    return findExchangeRate(exchangeRates, f, displayCurrency, invoiceDate);
+  };
+
+  const fpBillRates = useMemo<number[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) {
+      return sourceItems.map(() => 1);
+    }
+    return sourceItems.map((s) =>
+      rateFor(s.service_currency || s.source_currency || ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  const fpActualRates = useMemo<number[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) {
+      return sourceItems.map(() => 1);
+    }
+    return sourceItems.map((s) =>
+      rateFor(s.service_final_currency || s.final_currency || ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  const fpRefundedRate = useMemo<number>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return 1;
+    const refundCurrency =
+      sourceItems.find((s) => (s.refunded_currency || "").trim())
+        ?.refunded_currency ||
+      sourceItems[0]?.source_currency ||
+      "";
+    return rateFor(refundCurrency);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  // Rows whose conversion was needed but the table yielded 1 (missing rate).
+  const missingFinalPaymentRates = useMemo<string[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return [];
+    const missing: string[] = [];
+    const check = (from: string | undefined, rate: number, label: string) => {
+      const f = (from || "").trim().toUpperCase();
+      if (f && f !== displayCurrency && rate === 1) missing.push(label);
+    };
+    sourceItems.forEach((s, idx) => {
+      const tag = s.service || `#${idx + 1}`;
+      check(
+        s.service_currency || s.source_currency,
+        fpBillRates[idx],
+        `${tag} (${(s.service_currency || s.source_currency || "").toUpperCase()})`,
+      );
+      check(
+        s.service_final_currency || s.final_currency,
+        fpActualRates[idx],
+        `${tag} Final (${(s.service_final_currency || s.final_currency || "").toUpperCase()})`,
+      );
+    });
+    const refundCurrency =
+      sourceItems.find((s) => (s.refunded_currency || "").trim())
+        ?.refunded_currency ||
+      sourceItems[0]?.source_currency;
+    check(refundCurrency, fpRefundedRate, `Refunded (${(refundCurrency || "").toUpperCase()})`);
+    return Array.from(new Set(missing));
+  }, [
+    invoiceType,
+    displayCurrency,
+    sourceItems,
+    fpBillRates,
+    fpActualRates,
+    fpRefundedRate,
+  ]);
+
   useEffect(() => {
     const newConfig = COMPANY_CONFIGS[templateId] ?? COMPANY_CONFIGS.feilong;
     setCompanyConfig(newConfig);
   }, [templateId]);
 
-  // Consultant invoices must use an explicit Display Currency so per-row
-  // FX conversion applies (the "原始/Original" option is hidden in the UI).
-  // Auto-default to CNY when switching to consultant with no currency picked
-  // — covers both the initial render and users whose persisted state was "".
+  // Both invoice types now hide the "原始/Original" option and require an
+  // explicit Display Currency (per spec — consultant req 3, final-payment
+  // req 1.1). Auto-default so a currency is always selected:
+  //   - consultant   → CNY (per-row source currencies vary; CNY is the house default)
+  //   - final_payment→ the source Bill/Final currency when known (rate = 1,
+  //                     i.e. no conversion), else CNY. We wait for sourceItems
+  //                     so we don't lock in CNY before the real currency loads.
   useEffect(() => {
-    if (invoiceType === "consultant" && !displayCurrency) {
+    if (displayCurrency) return;
+    if (invoiceType === "consultant") {
       setDisplayCurrency("CNY");
+      return;
     }
-  }, [invoiceType, displayCurrency, setDisplayCurrency]);
+    if (invoiceType === "final_payment") {
+      if (sourceItems.length === 0) return; // wait until source currency is known
+      const src = (billCurrency || finalCurrency || "").toUpperCase();
+      const known = (CURRENCY_OPTIONS as readonly string[]).includes(src);
+      setDisplayCurrency(known ? (src as DisplayCurrency) : "CNY");
+    }
+  }, [
+    invoiceType,
+    displayCurrency,
+    billCurrency,
+    finalCurrency,
+    sourceItems.length,
+    setDisplayCurrency,
+  ]);
 
   useEffect(() => {
     if (sourceItems.length > 0) {
@@ -348,6 +445,9 @@ const App: React.FC = () => {
     displayCurrency,
     rateBill,
     rateFinal,
+    fpBillRates,
+    fpActualRates,
+    fpRefundedRate,
     templateId,
     bankAccountId,
     billTo,
@@ -365,12 +465,27 @@ const App: React.FC = () => {
     ewtRatePercent: invoiceType === "consultant" ? ewtRatePercent : undefined,
     // Display Currency now applies to BOTH invoice types (per spec req 3).
     displayCurrency: displayCurrency || undefined,
+    // Legacy single rates kept as a fallback for the backend (per-row arrays
+    // below take precedence when present).
     exchangeRateBill: invoiceType === "final_payment" ? rateBill : undefined,
     exchangeRateFinal: invoiceType === "final_payment" ? rateFinal : undefined,
     // Per-row consultant rates (per spec req 3 — each Service Name converts independently).
     exchangeRatesPerRow:
       invoiceType === "consultant" && displayCurrency
         ? consultantRowRates
+        : undefined,
+    // Per-row final-payment rates (per spec req 1.2).
+    finalPaymentBillRatesPerRow:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpBillRates
+        : undefined,
+    finalPaymentActualRatesPerRow:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpActualRates
+        : undefined,
+    finalPaymentRefundedRate:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpRefundedRate
         : undefined,
     // Per spec req 4 — installment block (consultant only).
     showInstallment: invoiceType === "consultant" && showInstallment,
@@ -787,19 +902,12 @@ const App: React.FC = () => {
                 </label>
                 <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                   {/*
-                    Per spec: hide the "原始 / Original" option for consultant
-                    invoices — they must pick an explicit Display Currency so
-                    per-row FX conversion applies. Final-payment invoices keep
-                    Original as the no-conversion mode.
+                    The "原始 / Original" option is hidden for BOTH invoice
+                    types (consultant req 3 + final-payment req 1.1). Users
+                    must pick an explicit Display Currency so per-row FX
+                    conversion applies; selecting the same currency as the
+                    source yields rate = 1 (no conversion).
                   */}
-                  {invoiceType === "final_payment" && (
-                    <button
-                      className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setDisplayCurrency("")}
-                    >
-                      原始 / Original
-                    </button>
-                  )}
                   {CURRENCY_OPTIONS.map((c) => (
                     <button
                       key={c}
@@ -838,6 +946,12 @@ const App: React.FC = () => {
                       finalCurrency === displayCurrency && (
                         <div>源币种与展示币种一致，无需换算 / Source currency matches display currency, no conversion needed</div>
                       )}
+                    {missingFinalPaymentRates.length > 0 && (
+                      <div style={{ color: "#b85c00", marginTop: 4 }}>
+                        汇率表中找不到以下换算汇率 / Missing exchange rate rows
+                        for: {missingFinalPaymentRates.join(", ")}
+                      </div>
+                    )}
                   </div>
                 )}
                 {displayCurrency && invoiceType === "consultant" &&

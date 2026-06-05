@@ -11,7 +11,17 @@
 }
 
 body {
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  /*
+   * Latin-first font stack. The container only ships Liberation Sans (a
+   * crisp, well-hinted Arial-metric Latin face) + Noto Sans CJK / WenQuanYi
+   * for Chinese. Listing CJK fonts first (the old order) made Chromium pull
+   * LATIN glyphs from the CJK face too, which rendered fuzzy/blurry in WPS.
+   * Putting Liberation Sans / Noto Sans first means Latin glyphs come from a
+   * proper Latin font, and Chinese glyphs fall through to the CJK faces.
+   */
+  font-family: 'Liberation Sans', 'Noto Sans', 'Helvetica Neue', Arial,
+    'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Zen Hei',
+    'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 12px;
   color: #333;
   background: #fff;

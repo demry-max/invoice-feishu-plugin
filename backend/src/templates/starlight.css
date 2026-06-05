@@ -11,7 +11,11 @@
 }
 
 body {
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  /* Latin-first stack — see invoice.css for the rationale (blurry Latin
+     glyphs in WPS came from CJK fonts being listed first). */
+  font-family: 'Liberation Sans', 'Noto Sans', 'Helvetica Neue', Arial,
+    'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Zen Hei',
+    'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 12px;
   color: #333;
   background: #fff;

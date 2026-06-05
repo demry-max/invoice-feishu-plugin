@@ -41,6 +41,18 @@ export function buildInvoiceItems(
      * Missing/short slots default to 1.
      */
     exchangeRatesPerRow?: number[];
+    /**
+     * Final-payment per-row rate (row Currency → display) applied to Amount
+     * Billed + Amount Paid (final-payment req 1.2). Parallel to `sources`;
+     * missing slots fall back to exchangeRateBill, then 1.
+     */
+    finalPaymentBillRatesPerRow?: number[];
+    /**
+     * Final-payment per-row rate (Final bill currency → display) applied to
+     * Actual Amount Incurred (final-payment req 1.2). Parallel to `sources`;
+     * missing slots fall back to exchangeRateFinal, then 1.
+     */
+    finalPaymentActualRatesPerRow?: number[];
   } = {},
 ): InvoiceItem[] {
   const {
@@ -49,14 +61,24 @@ export function buildInvoiceItems(
     exchangeRateBill = exchangeRate,
     exchangeRateFinal = exchangeRate,
     exchangeRatesPerRow,
+    finalPaymentBillRatesPerRow,
+    finalPaymentActualRatesPerRow,
   } = opts;
-  const scaleBill = (v: number | undefined): number =>
-    round2((v ?? 0) * exchangeRateBill);
-  const scaleFinal = (v: number | undefined): number =>
-    round2((v ?? 0) * exchangeRateFinal);
   const consultantRate = (idx: number): number => {
     const r = exchangeRatesPerRow?.[idx];
     return typeof r === "number" && r > 0 ? r : 1;
+  };
+  // Per-row final-payment rates with graceful fallback to the legacy single
+  // ticket-level rate, then 1.
+  const fpBillRate = (idx: number): number => {
+    const r = finalPaymentBillRatesPerRow?.[idx];
+    if (typeof r === "number" && r > 0) return r;
+    return exchangeRateBill > 0 ? exchangeRateBill : 1;
+  };
+  const fpActualRate = (idx: number): number => {
+    const r = finalPaymentActualRatesPerRow?.[idx];
+    if (typeof r === "number" && r > 0) return r;
+    return exchangeRateFinal > 0 ? exchangeRateFinal : 1;
   };
 
   return sources.map((s, idx) => {
@@ -64,10 +86,14 @@ export function buildInvoiceItems(
     const discount = s.discount_percent || 0;
 
     if (invoiceType === "final_payment") {
-      const displayPrice = scaleBill(s.price);
-      const amountBilled = scaleBill(s.amount_billed ?? s.price);
-      const actual = scaleFinal(s.actual_amount_incurred);
-      const paid = scaleBill(s.amount_paid);
+      // Amount Billed + Amount Paid ride the row Currency rate; Actual Amount
+      // Incurred rides the row Final-bill-currency rate (final-payment req 1.2).
+      const billRate = fpBillRate(idx);
+      const actualRate = fpActualRate(idx);
+      const displayPrice = round2((s.price ?? 0) * billRate);
+      const amountBilled = round2((s.amount_billed ?? s.price ?? 0) * billRate);
+      const actual = round2((s.actual_amount_incurred ?? 0) * actualRate);
+      const paid = round2((s.amount_paid ?? 0) * billRate);
       const balance = round2(actual - paid);
       return {
         invoice_no: invoiceNo,

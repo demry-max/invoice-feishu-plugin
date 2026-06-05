@@ -6,12 +6,55 @@ import {
   getInvoiceHtml,
   getInvoicePdf,
   getInvoiceDocx,
+  getInvoice,
   listInvoicesForSourceRecord,
 } from '../services/invoice-service';
 import type { Invoice } from '../types';
 import { createFeishuAdapter } from '../adapters/feishu-adapter';
 
 const feishu = createFeishuAdapter();
+
+/** Characters illegal in file names on Windows / macOS / Linux + control chars. */
+function sanitizeFilenamePart(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Per consultant spec: PDF/Word filename is `{invoiceNo}_{companyName}`
+ * (or `{invoiceNo}_{billTo}` when company name is empty). Final-payment and
+ * unknown invoices fall back to `{invoiceNo}`. Returns the base name WITHOUT
+ * extension.
+ */
+function invoiceFileBaseName(invoiceNo: string, invoice?: Invoice): string {
+  if (invoice && invoice.invoice_type !== 'final_payment') {
+    const company = sanitizeFilenamePart(invoice.company_name ?? '');
+    const billTo = sanitizeFilenamePart(invoice.bill_to ?? '');
+    const namePart = company || billTo;
+    if (namePart) return `${invoiceNo}_${namePart}`;
+  }
+  return invoiceNo;
+}
+
+/**
+ * Build a Content-Disposition header value that works with non-ASCII
+ * (e.g. Chinese) file names: an ASCII fallback `filename=` plus an
+ * RFC 5987 `filename*=UTF-8''<percent-encoded>` variant that modern
+ * browsers prefer.
+ */
+function contentDisposition(
+  disposition: 'inline' | 'attachment',
+  baseName: string,
+  ext: string,
+): string {
+  const asciiFallback = `${baseName.replace(/[^\x20-\x7e]/g, '_')}.${ext}`;
+  const utf8 = encodeURIComponent(`${baseName}.${ext}`);
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${utf8}`;
+}
 
 /** POST /api/invoices/preview */
 export async function handlePreview(req: Request, res: Response): Promise<void> {
@@ -107,8 +150,12 @@ export async function handleGetPdf(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    const baseName = invoiceFileBaseName(invoiceNo, getInvoice(invoiceNo));
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${invoiceNo}.pdf"`);
+    res.setHeader(
+      'Content-Disposition',
+      contentDisposition('inline', baseName, 'pdf'),
+    );
     res.send(pdf);
   } catch (err) {
     console.error('GetPdf error:', err);
@@ -127,13 +174,14 @@ export async function handleGetDocx(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const baseName = invoiceFileBaseName(invoiceNo, getInvoice(invoiceNo));
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${invoiceNo}.docx"`,
+      contentDisposition('attachment', baseName, 'docx'),
     );
     res.send(docx);
   } catch (err) {

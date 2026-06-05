@@ -41,6 +41,39 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
+/**
+ * Strip characters that are illegal in file names across Windows / macOS /
+ * Linux ( \ / : * ? " < > | ) plus ASCII control chars, and collapse
+ * whitespace. CJK characters are preserved (valid in modern file systems).
+ */
+function sanitizeFilenamePart(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|]/g, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Build the download filename for a generated invoice (per consultant spec):
+ *   - consultant + company name present → `{invoiceNo}_{companyName}`
+ *   - consultant + company name empty   → `{invoiceNo}_{billTo}`
+ *   - final_payment / no name           → `{invoiceNo}`
+ * `ext` is appended (e.g. "pdf", "docx").
+ */
+function buildInvoiceFilename(result: GenerateResponse, ext: string): string {
+  const invoiceNo = result.invoice_no;
+  const inv = result.invoice;
+  if (inv && inv.invoice_type !== "final_payment") {
+    const company = sanitizeFilenamePart(inv.company_name ?? "");
+    const billTo = sanitizeFilenamePart(inv.bill_to ?? "");
+    const namePart = company || billTo;
+    if (namePart) return `${invoiceNo}_${namePart}.${ext}`;
+  }
+  return `${invoiceNo}.${ext}`;
+}
+
 export const ResultSection: React.FC<Props> = ({ result }) => {
   const [status, setStatus] = useState<string>("");
 
@@ -65,7 +98,7 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
     if (!result.pdf_url) return;
     setStatus("下载 PDF 中… / Downloading PDF…");
     try {
-      await fetchAndDownload(result.pdf_url, `${invoiceNo}.pdf`);
+      await fetchAndDownload(result.pdf_url, buildInvoiceFilename(result, "pdf"));
       setStatus("");
     } catch (err) {
       setStatus(
@@ -84,7 +117,10 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
     if (!result.word_url) return;
     setStatus("下载 Word 中… / Downloading Word…");
     try {
-      await fetchAndDownload(result.word_url, `${invoiceNo}.docx`);
+      await fetchAndDownload(
+        result.word_url,
+        buildInvoiceFilename(result, "docx"),
+      );
       setStatus("");
     } catch (err) {
       setStatus(

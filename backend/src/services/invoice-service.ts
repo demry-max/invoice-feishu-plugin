@@ -161,6 +161,20 @@ function pickCurrencySymbol(
 const DEFAULT_FINAL_PAYMENT_BUSINESS_DAYS = 30;
 
 /**
+ * Resolve the rate applied to Amount Refunded for a final-payment invoice
+ * (final-payment req 1.2 — Refunded Currency → Display Currency). Falls back
+ * to the legacy ticket-level bill rate, then 1.
+ */
+function fpRefundedRate(
+  req: { final_payment_refunded_rate?: number },
+  fallbackRate: number,
+): number {
+  const r = req.final_payment_refunded_rate;
+  if (typeof r === "number" && r > 0) return r;
+  return fallbackRate > 0 ? fallbackRate : 1;
+}
+
+/**
  * Compute installment-payment info for consultant invoices (per spec req 4).
  * The formula is applied per-line so that mixed-ratio service rows produce
  * an accurate first-payment amount; the displayed first-payment percentage
@@ -288,6 +302,8 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     exchangeRateBill: rateBill,
     exchangeRateFinal: rateFinal,
     exchangeRatesPerRow: req.exchange_rates_per_row,
+    finalPaymentBillRatesPerRow: req.final_payment_bill_rates_per_row,
+    finalPaymentActualRatesPerRow: req.final_payment_actual_rates_per_row,
   });
   const subtotal = calcSubtotal(items);
   const currency = pickCurrencySymbol(
@@ -297,12 +313,17 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
   );
 
   if (invoiceType === "final_payment") {
-    const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
+    const { amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    // Paid/Refund/Deductible all ride the Bill-Currency rate.
-    const paidTotal = round2(amountPaidTotal * rateBill);
-    const refunded = round2(amountRefunded * rateBill);
-    const deductible = round2(totalDeductionAmount * rateBill);
+    // Amount Refunded rides the Refunded-Currency rate (final-payment req 1.2),
+    // falling back to the legacy bill rate.
+    const refundedRate = fpRefundedRate(req, rateBill);
+    // Amount Paid total = sum of per-row converted paid amounts.
+    const paidTotal = round2(
+      items.reduce((s, it) => s + (it.amount_paid ?? 0), 0),
+    );
+    const refunded = round2(amountRefunded * refundedRate);
+    const deductible = round2(totalDeductionAmount * refundedRate);
     const totalBalance = calcTotalBalance(items);
     const finalBalance = calcFinalBalance(totalBalance, refunded);
     return {
@@ -408,16 +429,21 @@ export async function generateInvoice(
     exchangeRateBill: rateBill,
     exchangeRateFinal: rateFinal,
     exchangeRatesPerRow: req.exchange_rates_per_row,
+    finalPaymentBillRatesPerRow: req.final_payment_bill_rates_per_row,
+    finalPaymentActualRatesPerRow: req.final_payment_actual_rates_per_row,
   });
   const subtotal = calcSubtotal(items);
 
   let invoice: Invoice;
   if (invoiceType === "final_payment") {
-    const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
+    const { amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    const paidTotal = round2(amountPaidTotal * rateBill);
-    const refunded = round2(amountRefunded * rateBill);
-    const deductible = round2(totalDeductionAmount * rateBill);
+    const refundedRate = fpRefundedRate(req, rateBill);
+    const paidTotal = round2(
+      items.reduce((s, it) => s + (it.amount_paid ?? 0), 0),
+    );
+    const refunded = round2(amountRefunded * refundedRate);
+    const deductible = round2(totalDeductionAmount * refundedRate);
     const totalBalance = calcTotalBalance(items);
     const finalBalance = calcFinalBalance(totalBalance, refunded);
     invoice = {

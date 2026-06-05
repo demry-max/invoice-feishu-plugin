@@ -69,11 +69,24 @@ export interface SourceItem {
   final_currency?: string;
   /**
    * Per-row source currency from the 任务明细表/Task Detail List `Currency`
-   * column (per spec req 3). Used by the consultant flow to look up an
-   * exchange rate per Service Name; falls back to `source_currency` (main
-   * table Bill Currency) when absent.
+   * column (per spec req 3 / final-payment req 1.2). Drives conversion of
+   * Amount Billed + Amount Paid. Falls back to `source_currency` (main table
+   * Bill Currency) when absent.
    */
   service_currency?: string;
+  /**
+   * Per-row Final bill currency from the 任务明细表/Task Detail List
+   * `Final bill currency` column (final-payment req 1.2). Drives conversion
+   * of Actual Amount Incurred. Falls back to `final_currency` (main table)
+   * when absent.
+   */
+  service_final_currency?: string;
+  /**
+   * Refunded Currency from the 业务工单/Business Ticket (final-payment
+   * req 1.2). Drives conversion of Amount Refunded. Ticket-level; replicated
+   * onto each SourceItem. Falls back to `source_currency` when absent.
+   */
+  refunded_currency?: string;
   /**
    * Per-row First Payment Ratio from the 任务明细表/Task Detail List
    * `First Payment Ratio` column (per spec req 4). Used as the per-line
@@ -202,6 +215,24 @@ export interface PreviewRequest {
    * default to 1 (no conversion).
    */
   exchange_rates_per_row?: number[];
+  /**
+   * Final-payment per-row rate for the row `Currency` → Display Currency
+   * (final-payment req 1.2). Applied to Amount Billed + Amount Paid. Parallel
+   * to `items`; missing slots default to 1.
+   */
+  final_payment_bill_rates_per_row?: number[];
+  /**
+   * Final-payment per-row rate for the row `Final bill currency` → Display
+   * Currency (final-payment req 1.2). Applied to Actual Amount Incurred.
+   * Parallel to `items`; missing slots default to 1.
+   */
+  final_payment_actual_rates_per_row?: number[];
+  /**
+   * Final-payment ticket-level rate for `Refunded Currency` → Display
+   * Currency (final-payment req 1.2). Applied to Amount Refunded. Defaults
+   * to 1.
+   */
+  final_payment_refunded_rate?: number;
   invoice_date?: string;
 }
 
@@ -262,6 +293,12 @@ export interface GenerateRequest {
   exchange_rate_final?: number;
   /** Per-row consultant exchange rates parallel to `items`. See PreviewRequest. */
   exchange_rates_per_row?: number[];
+  /** Final-payment per-row rate (row Currency → display) for Amount Billed + Paid. */
+  final_payment_bill_rates_per_row?: number[];
+  /** Final-payment per-row rate (Final bill currency → display) for Actual Amount Incurred. */
+  final_payment_actual_rates_per_row?: number[];
+  /** Final-payment ticket rate (Refunded Currency → display) for Amount Refunded. */
+  final_payment_refunded_rate?: number;
   /** When true, render the installment-payment block under Grand Total (consultant only). */
   show_installment?: boolean;
   /** Editable installment values (per spec req 4). Falls back to formula defaults. */

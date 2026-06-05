@@ -118,6 +118,13 @@ const MAIN_TABLE_FIELDS = {
   BILL_CURRENCY: ["Bill Currency", "Currency", "币种", "账单币种"],
   // "Final" currency (covers Actual Amount Incurred)
   FINAL_BILL_CURRENCY: ["Final bill currency", "Final Bill Currency"],
+  // Per final-payment req 1.2 — currency of the Amount Refunded value.
+  REFUNDED_CURRENCY: [
+    "Refunded Currency",
+    "Refund Currency",
+    "退款币种",
+    "退款货币",
+  ],
 } as const;
 
 const EXCHANGE_RATE_TABLE_NAMES = [
@@ -249,6 +256,16 @@ const SERVICE_TABLE_FIELDS = {
     "币种",
     "原币种",
     "源币种",
+  ],
+  // Per-row Final bill currency on 任务明细表 (final-payment req 1.2 — drives
+  // Actual Amount Incurred conversion). Distinct from the per-row CURRENCY
+  // which drives Amount Billed / Amount Paid.
+  FINAL_BILL_CURRENCY: [
+    "Final bill currency",
+    "Final Bill Currency",
+    "Final Currency",
+    "尾款币种",
+    "最终币种",
   ],
   // Per-row First Payment Ratio on 任务明细表 (per spec req 4 — used as
   // installment-payment formula default when generating consultant invoices).
@@ -580,6 +597,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             service_currency: String(
               firstValue(svcFields, SERVICE_TABLE_FIELDS.CURRENCY) ?? "",
             ).trim() || undefined,
+            service_final_currency: String(
+              firstValue(svcFields, SERVICE_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
+            ).trim() || undefined,
+            refunded_currency: String(
+              firstValue(mainFields, MAIN_TABLE_FIELDS.REFUNDED_CURRENCY) ?? "",
+            ).trim() || undefined,
             first_payment_ratio: parseRatioFraction(
               firstValue(svcFields, SERVICE_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
             ),
@@ -691,6 +714,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         ).trim() || undefined,
         service_currency: String(
           firstValue(fields, SERVICE_TABLE_FIELDS.CURRENCY) ?? "",
+        ).trim() || undefined,
+        service_final_currency: String(
+          firstValue(fields, SERVICE_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
+        ).trim() || undefined,
+        refunded_currency: String(
+          firstValue(fields, MAIN_TABLE_FIELDS.REFUNDED_CURRENCY) ?? "",
         ).trim() || undefined,
         first_payment_ratio: parseRatioFraction(
           firstValue(fields, SERVICE_TABLE_FIELDS.FIRST_PAYMENT_RATIO),
