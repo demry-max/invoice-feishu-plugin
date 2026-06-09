@@ -29,22 +29,34 @@ export function buildInvoiceItems(
   invoiceNo: string,
   opts: {
     invoiceType?: InvoiceType;
-    exchangeRate?: number; // multiply source amount by this to get display amount
+    /** Rate applied to Bill-Currency-sourced amounts (billed/paid/refund/deduction). */
+    exchangeRateBill?: number;
+    /** Rate applied to Final-bill-currency-sourced amounts (Actual Amount Incurred). */
+    exchangeRateFinal?: number;
+    /** @deprecated — pass exchangeRateBill + exchangeRateFinal instead. */
+    exchangeRate?: number;
   } = {},
 ): InvoiceItem[] {
-  const { invoiceType = "consultant", exchangeRate = 1 } = opts;
-  const scale = (v: number | undefined): number =>
-    round2((v ?? 0) * exchangeRate);
+  const {
+    invoiceType = "consultant",
+    exchangeRate = 1,
+    exchangeRateBill = exchangeRate,
+    exchangeRateFinal = exchangeRate,
+  } = opts;
+  const scaleBill = (v: number | undefined): number =>
+    round2((v ?? 0) * exchangeRateBill);
+  const scaleFinal = (v: number | undefined): number =>
+    round2((v ?? 0) * exchangeRateFinal);
 
   return sources.map((s, idx) => {
-    const displayPrice = scale(s.price);
+    const displayPrice = scaleBill(s.price);
     const qty = Math.max(s.qty, 1);
     const discount = s.discount_percent || 0;
 
     if (invoiceType === "final_payment") {
-      const amountBilled = scale(s.amount_billed ?? s.price);
-      const actual = scale(s.actual_amount_incurred);
-      const paid = scale(s.amount_paid);
+      const amountBilled = scaleBill(s.amount_billed ?? s.price);
+      const actual = scaleFinal(s.actual_amount_incurred);
+      const paid = scaleBill(s.amount_paid);
       const balance = round2(actual - paid);
       return {
         invoice_no: invoiceNo,
@@ -68,7 +80,7 @@ export function buildInvoiceItems(
       };
     }
 
-    // Consultant
+    // Consultant — legacy single rate (effectively no conversion for consultant)
     return {
       invoice_no: invoiceNo,
       service: s.service,

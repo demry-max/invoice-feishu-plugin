@@ -60,8 +60,10 @@ export interface SourceItem {
   // Main-record context (same for every line in one invoice)
   amount_refunded?: number;
   total_deduction_amount?: number;
-  // Source record's bill currency (e.g., "CNY", "USD", "PHP")
+  // Source record's "billed-side" currency (Amount Billed / Paid / Refunded / Deductible)
   source_currency?: string;
+  // Source record's "final" currency (Actual Amount Incurred)
+  final_currency?: string;
 }
 
 /** 汇率表行：按账单生成日期在 [effective_date, expiry_date] 区间内查找 */
@@ -158,7 +160,12 @@ export interface PreviewRequest {
   invoice_type?: InvoiceType;
   vat_rate_percent?: VatRatePercent;
   display_currency?: DisplayCurrency;
+  /** @deprecated use exchange_rate_bill + exchange_rate_final */
   exchange_rate?: number;
+  /** Rate applied to Bill Currency → display (Amount Billed / Paid / Refunded / Deductible) */
+  exchange_rate_bill?: number;
+  /** Rate applied to Final bill currency → display (Actual Amount Incurred) */
+  exchange_rate_final?: number;
   invoice_date?: string;
 }
 
@@ -199,6 +206,8 @@ export interface GenerateRequest {
   vat_rate_percent?: VatRatePercent;
   display_currency?: DisplayCurrency;
   exchange_rate?: number;
+  exchange_rate_bill?: number;
+  exchange_rate_final?: number;
 }
 
 /** 生成账单响应 */

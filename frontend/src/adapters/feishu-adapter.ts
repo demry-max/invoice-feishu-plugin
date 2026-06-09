@@ -88,13 +88,10 @@ const MAIN_TABLE_FIELDS = {
   INVOICE_ATTACHMENT: ["Invoice Attachment", "账单附件"],
   AMOUNT_REFUNDED: ["Amount Refunded", "退款金额"],
   TOTAL_DEDUCTION_AMOUNT: ["Total Deduction Amount", "总扣款金额"],
-  BILL_CURRENCY: [
-    "Bill Currency",
-    "Final bill currency",
-    "Currency",
-    "币种",
-    "账单币种",
-  ],
+  // Primary "billed-side" currency (covers Amount Billed / Paid / Refunded / Deductible)
+  BILL_CURRENCY: ["Bill Currency", "Currency", "币种", "账单币种"],
+  // "Final" currency (covers Actual Amount Incurred)
+  FINAL_BILL_CURRENCY: ["Final bill currency", "Final Bill Currency"],
 } as const;
 
 const EXCHANGE_RATE_TABLE_NAMES = [
@@ -407,9 +404,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       const mainBillNumber = String(
         firstValue(mainFields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
       ).trim();
-      const mainBillingDate = String(
-        firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
-      ).slice(0, 10);
+      const mainBillingDate = toIsoDate(
+        firstValue(mainFields, MAIN_TABLE_FIELDS.BILLING_DATE),
+      );
 
       console.log(
         "[RealFrontend] 工单主表 record:",
@@ -505,6 +502,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             source_currency: String(
               firstValue(mainFields, MAIN_TABLE_FIELDS.BILL_CURRENCY) ?? "",
             ).trim() || undefined,
+            final_currency: String(
+              firstValue(mainFields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
+            ).trim() || undefined,
           };
 
           allItems.push(item);
@@ -590,9 +590,8 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
             firstValue(fields, MAIN_TABLE_FIELDS.BILL_NUMBER) ?? "",
           ).trim() || undefined,
         billing_date:
-          String(
-            firstValue(fields, MAIN_TABLE_FIELDS.BILLING_DATE) ?? "",
-          ).slice(0, 10) || undefined,
+          toIsoDate(firstValue(fields, MAIN_TABLE_FIELDS.BILLING_DATE)) ||
+          undefined,
         amount_refunded: parseNumber(
           firstValue(fields, MAIN_TABLE_FIELDS.AMOUNT_REFUNDED),
         ),
@@ -601,6 +600,9 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
         ),
         source_currency: String(
           firstValue(fields, MAIN_TABLE_FIELDS.BILL_CURRENCY) ?? "",
+        ).trim() || undefined,
+        final_currency: String(
+          firstValue(fields, MAIN_TABLE_FIELDS.FINAL_BILL_CURRENCY) ?? "",
         ).trim() || undefined,
       });
     }
@@ -640,12 +642,12 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       try {
         const rec = await table.getRecordById(id);
         const f = extractFields(rec.fields, nameById);
-        const effective = String(
-          firstValue(f, EXCHANGE_RATE_FIELDS.EFFECTIVE_DATE) ?? "",
-        ).slice(0, 10);
-        const expiry = String(
-          firstValue(f, EXCHANGE_RATE_FIELDS.EXPIRY_DATE) ?? "",
-        ).slice(0, 10);
+        const effective = toIsoDate(
+          firstValue(f, EXCHANGE_RATE_FIELDS.EFFECTIVE_DATE),
+        );
+        const expiry = toIsoDate(
+          firstValue(f, EXCHANGE_RATE_FIELDS.EXPIRY_DATE),
+        );
         const from = String(
           firstValue(f, EXCHANGE_RATE_FIELDS.FROM_CURRENCY) ?? "",
         )
@@ -672,7 +674,16 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
     }
     // suppress unused-var warning for idByName
     void idByName;
-    console.log("[RealFrontend] 汇率表 rows:", rows.length);
+    console.log(
+      "[RealFrontend] 汇率表 rows:",
+      rows.length,
+      rows
+        .slice(0, 10)
+        .map(
+          (r) =>
+            `${r.from_currency}→${r.to_currency}=${r.rate} [${r.effective_date}..${r.expiry_date ?? "∞"}]`,
+        ),
+    );
     return rows;
   }
 
@@ -700,9 +711,17 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       if (id) updates[id] = value;
     };
 
+    // Bitable Date fields expect a millisecond timestamp, not a string.
+    const dateMs = (iso: string): number => {
+      // Use noon UTC to avoid off-by-one in local time zones
+      const d = new Date(`${iso}T12:00:00Z`);
+      const t = d.getTime();
+      return Number.isNaN(t) ? Date.now() : t;
+    };
+
     if (invoice.invoice_type === "final_payment") {
       put(MAIN_TABLE_FIELDS.FINAL_BILL_NUMBER, invoice.invoice_no);
-      put(MAIN_TABLE_FIELDS.FINAL_BILLING_DATE, invoice.invoice_date);
+      put(MAIN_TABLE_FIELDS.FINAL_BILLING_DATE, dateMs(invoice.invoice_date));
       put(MAIN_TABLE_FIELDS.FINAL_HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.FINAL_PDF_LINK, invoice.pdf_url ?? "");
       put(
@@ -711,6 +730,7 @@ class RealFrontendAdapter implements FrontendFeishuAdapter {
       );
     } else {
       put(MAIN_TABLE_FIELDS.BILL_NUMBER, invoice.invoice_no);
+      put(MAIN_TABLE_FIELDS.BILLING_DATE, dateMs(invoice.invoice_date));
       put(MAIN_TABLE_FIELDS.HTML_LINK, invoice.html_url ?? "");
       put(MAIN_TABLE_FIELDS.PDF_LINK, invoice.pdf_url ?? "");
       put(MAIN_TABLE_FIELDS.ADD_VAT, invoice.vat_amount);
@@ -834,6 +854,23 @@ function formatDate(v: unknown): string {
   const d = new Date(Number(v));
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().split("T")[0];
+}
+
+/**
+ * Normalize a Bitable date-field value to YYYY-MM-DD.
+ * Handles: ISO-ish strings (sliced), numeric / numeric-string timestamps,
+ * and objects with .timestamp (via normalizeBitableValue upstream).
+ */
+function toIsoDate(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") {
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+    const n = Number(v);
+    if (Number.isFinite(n)) return formatDate(n);
+    return v.slice(0, 10);
+  }
+  if (typeof v === "number") return formatDate(v);
+  return "";
 }
 
 /**

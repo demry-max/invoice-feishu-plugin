@@ -23,6 +23,7 @@ import {
   aggregateFinalPaymentContext,
   DEFAULT_VAT_RATE,
   EWT_RATE,
+  round2,
 } from "../utils/calculation";
 import { generateInvoiceNo } from "../utils/invoice-no";
 import { getCompanyConfigForTemplate } from "../utils/config";
@@ -113,14 +114,23 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
   const taxMode: TaxMode = req.tax_mode ?? "tax_included";
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
   const templateId: BrandTemplateId = req.template_id ?? "feilong";
-  const exchangeRate =
+  const legacyRate =
     typeof req.exchange_rate === "number" && req.exchange_rate > 0
       ? req.exchange_rate
       : 1;
+  const rateBill =
+    typeof req.exchange_rate_bill === "number" && req.exchange_rate_bill > 0
+      ? req.exchange_rate_bill
+      : legacyRate;
+  const rateFinal =
+    typeof req.exchange_rate_final === "number" && req.exchange_rate_final > 0
+      ? req.exchange_rate_final
+      : legacyRate;
 
   const items = buildInvoiceItems(req.items, "PREVIEW", {
     invoiceType,
-    exchangeRate,
+    exchangeRateBill: rateBill,
+    exchangeRateFinal: rateFinal,
   });
   const subtotal = calcSubtotal(items);
   const currency = pickCurrencySymbol(
@@ -132,9 +142,10 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
   if (invoiceType === "final_payment") {
     const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    const paidTotal = amountPaidTotal * exchangeRate;
-    const refunded = amountRefunded * exchangeRate;
-    const deductible = totalDeductionAmount * exchangeRate;
+    // Paid/Refund/Deductible all ride the Bill-Currency rate.
+    const paidTotal = round2(amountPaidTotal * rateBill);
+    const refunded = round2(amountRefunded * rateBill);
+    const deductible = round2(totalDeductionAmount * rateBill);
     const totalBalance = calcTotalBalance(items);
     const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
     return {
@@ -149,7 +160,7 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
       amount_paid_total: paidTotal,
       amount_refunded: refunded,
       total_deduction_amount: deductible,
-      exchange_rate: exchangeRate,
+      exchange_rate: rateBill, // legacy echo
       display_currency: req.display_currency,
       total_balance: totalBalance,
       final_balance: finalBalance,
@@ -191,10 +202,18 @@ export async function generateInvoice(
   const taxMode: TaxMode = req.tax_mode ?? "tax_included";
   const templateId: BrandTemplateId = req.template_id ?? "feilong";
   const invoiceType: InvoiceType = req.invoice_type ?? "consultant";
-  const exchangeRate =
+  const legacyRate =
     typeof req.exchange_rate === "number" && req.exchange_rate > 0
       ? req.exchange_rate
       : 1;
+  const rateBill =
+    typeof req.exchange_rate_bill === "number" && req.exchange_rate_bill > 0
+      ? req.exchange_rate_bill
+      : legacyRate;
+  const rateFinal =
+    typeof req.exchange_rate_final === "number" && req.exchange_rate_final > 0
+      ? req.exchange_rate_final
+      : legacyRate;
   const config = getCompanyConfigForTemplate(templateId, req.company_config);
   const bankAccount = resolveBankAccount(req.bank_account_id, templateId);
   const currency = pickCurrencySymbol(
@@ -205,7 +224,8 @@ export async function generateInvoice(
 
   const items = buildInvoiceItems(req.items, invoiceNo, {
     invoiceType,
-    exchangeRate,
+    exchangeRateBill: rateBill,
+    exchangeRateFinal: rateFinal,
   });
   const subtotal = calcSubtotal(items);
 
@@ -213,9 +233,9 @@ export async function generateInvoice(
   if (invoiceType === "final_payment") {
     const { amountPaidTotal, amountRefunded, totalDeductionAmount } =
       aggregateFinalPaymentContext(req.items);
-    const paidTotal = amountPaidTotal * exchangeRate;
-    const refunded = amountRefunded * exchangeRate;
-    const deductible = totalDeductionAmount * exchangeRate;
+    const paidTotal = round2(amountPaidTotal * rateBill);
+    const refunded = round2(amountRefunded * rateBill);
+    const deductible = round2(totalDeductionAmount * rateBill);
     const totalBalance = calcTotalBalance(items);
     const finalBalance = calcFinalBalance(totalBalance, deductible, refunded);
     invoice = {
@@ -242,7 +262,7 @@ export async function generateInvoice(
       amount_paid_total: paidTotal,
       amount_refunded: refunded,
       total_deduction_amount: deductible,
-      exchange_rate: exchangeRate,
+      exchange_rate: rateBill,
       display_currency: req.display_currency,
       total_balance: totalBalance,
       final_balance: finalBalance,
