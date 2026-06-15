@@ -595,7 +595,8 @@ const App: React.FC = () => {
     ];
     if (invoiceType === "consultant") {
       parts.push(taxMode === "tax_included" ? `含税 / Tax Included ${vatRatePercent}%` : "不含税 / Tax Excluded");
-      if (taxMode === "tax_included" && templateId === "starlight") {
+      // EWT chip shown for both consultant templates (per 2026-06-05 spec).
+      if (taxMode === "tax_included") {
         parts.push(`EWT ${ewtRatePercent}%`);
       }
     } else {
@@ -834,31 +835,36 @@ const App: React.FC = () => {
                           ))}
                         </div>
                       </div>
-                      {templateId === "starlight" && (
-                        <div>
-                          <label
-                            style={{
-                              fontSize: "12px",
-                              color: "#666",
-                              marginBottom: "4px",
-                              display: "block",
-                            }}
-                          >
-                            预扣税比例 / EWT Rate
-                          </label>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            {EWT_OPTIONS.map((v) => (
-                              <button
-                                key={v}
-                                className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
-                                onClick={() => setEwtRatePercent(v)}
-                              >
-                                {v}%
-                              </button>
-                            ))}
-                          </div>
+                      {/*
+                        EWT Rate selector — shown for BOTH consultant brand
+                        templates (菲龙咨询/Feilong + Starlight) per the
+                        2026-06-05 spec. Choosing 0% hides the Less:EWT row on
+                        the invoice (handled by the template's ewt_rate > 0
+                        gate).
+                      */}
+                      <div>
+                        <label
+                          style={{
+                            fontSize: "12px",
+                            color: "#666",
+                            marginBottom: "4px",
+                            display: "block",
+                          }}
+                        >
+                          预扣税比例 / EWT Rate
+                        </label>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {EWT_OPTIONS.map((v) => (
+                            <button
+                              key={v}
+                              className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                              onClick={() => setEwtRatePercent(v)}
+                            >
+                              {v}%
+                            </button>
+                          ))}
                         </div>
-                      )}
+                      </div>
                     </>
                   )}
                 </>

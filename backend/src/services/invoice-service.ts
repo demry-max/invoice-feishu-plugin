@@ -126,10 +126,19 @@ function findExistingInvoiceNoForType(
 }
 
 /**
- * EWT rate resolution (2026-05-18 spec):
- *   tax_mode = "tax_excluded" (不含税)                  → 0
- *   tax_mode = "tax_included" + templateId = feilong    → 0 (菲龙咨询 never charges EWT)
- *   tax_mode = "tax_included" + templateId = starlight  → override ∈ {2,10,15}, default 2
+ * EWT rate resolution.
+ *
+ * 2026-06-05 spec update: EWT is now available for BOTH consultant brand
+ * templates (菲龙咨询/Feilong AND Starlight), selectable as 0% / 2% / 10% / 15%.
+ * Previously Feilong was hard-excluded.
+ *
+ *   tax_mode = "tax_excluded" (不含税)                → 0 (no tax applied at all)
+ *   tax_mode = "tax_included" + explicit override     → override ∈ {0,2,10,15}
+ *   tax_mode = "tax_included" + no override (API only) → starlight 2%, feilong 0%
+ *
+ * The UI always sends an explicit ewt_rate_percent for consultant invoices,
+ * so the per-template fallback only matters for direct API calls. Feilong's
+ * fallback stays 0% so omitting the field never silently withholds tax.
  */
 function resolveConsultantEwtRate(
   taxMode: TaxMode,
@@ -137,9 +146,8 @@ function resolveConsultantEwtRate(
   override?: number,
 ): number {
   if (taxMode !== "tax_included") return 0;
-  if (templateId !== "starlight") return 0;
   if (typeof override === "number" && override >= 0) return override;
-  return EWT_RATE;
+  return templateId === "starlight" ? EWT_RATE : 0;
 }
 
 function pickCurrencySymbol(
