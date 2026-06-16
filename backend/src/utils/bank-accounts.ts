@@ -73,6 +73,16 @@ export const DEFAULT_BANK_ACCOUNTS: readonly BankAccount[] = [
     payment_title: "Please Deposit Payment to the Following Bank Account",
     currency_label: "USD",
   },
+  {
+    id: "miraya-scb-thb",
+    label: "Miraya-SCB(THB)",
+    account_name: "Miraya Consultant and Accounting",
+    account_number: "4310766112",
+    bank_name: "SCB (The Siam Commercial Bank PCL)",
+    swift_code: "SICOTHBK",
+    payment_title: "Please Deposit Payment to the Following Bank Account",
+    currency_label: "THB",
+  },
 ] as const;
 
 /** 根据 ID 查找银行账户 */
