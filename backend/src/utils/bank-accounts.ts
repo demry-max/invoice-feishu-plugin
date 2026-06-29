@@ -83,6 +83,26 @@ export const DEFAULT_BANK_ACCOUNTS: readonly BankAccount[] = [
     payment_title: "Please Deposit Payment to the Following Bank Account",
     currency_label: "THB",
   },
+  {
+    id: "starlight-aub-php",
+    label: "Starlight-AUB(PHP)",
+    account_name: "STARLIGHT BUSINESS CONSULTING SERVICES INC.",
+    account_number: "004010032211",
+    bank_name: "AUB (Asia United Bank)",
+    swift_code: "AUBKPHMM",
+    payment_title: "Please Deposit Payment to the Following Bank Account",
+    currency_label: "PHP",
+  },
+  {
+    id: "starlight-unionbank-php",
+    label: "Starlight-UnionBank(PHP)",
+    account_name: "STARLIGHT BUSINESS CONSULTING SERVICES INC.",
+    account_number: "000100019080",
+    bank_name: "UnionBank",
+    swift_code: "UBPHPHMM",
+    payment_title: "Please Deposit Payment to the Following Bank Account",
+    currency_label: "PHP",
+  },
 ] as const;
 
 /** 根据 ID 查找银行账户 */
