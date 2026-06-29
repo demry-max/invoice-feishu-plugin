@@ -45,6 +45,24 @@ export interface PreviewOptions {
   exchangeRate?: number;
   exchangeRateBill?: number;
   exchangeRateFinal?: number;
+  /** Per-row consultant exchange rates (parallel to items, per spec req 3). */
+  exchangeRatesPerRow?: number[];
+  /** Final-payment per-row rate (row Currency → display) for Amount Billed + Paid. */
+  finalPaymentBillRatesPerRow?: number[];
+  /** Final-payment per-row rate (Final bill currency → display) for Actual Amount Incurred. */
+  finalPaymentActualRatesPerRow?: number[];
+  /** Final-payment ticket rate (Refunded Currency → display) for Amount Refunded. */
+  finalPaymentRefundedRate?: number;
+  /** Render the installment block under Grand Total (consultant only, per spec req 4). */
+  showInstallment?: boolean;
+  /** Editable installment overrides; falls back to formula defaults. */
+  installment?: {
+    first_payment_ratio?: number;
+    final_payment_ratio?: number;
+    first_payment_amount?: number;
+    final_payment_amount?: number;
+    final_payment_business_days?: number;
+  };
   invoiceDate?: string;
 }
 
@@ -135,6 +153,11 @@ export function useInvoice() {
           exchange_rate: opts?.exchangeRate,
           exchange_rate_bill: opts?.exchangeRateBill,
           exchange_rate_final: opts?.exchangeRateFinal,
+          exchange_rates_per_row: opts?.exchangeRatesPerRow,
+          final_payment_bill_rates_per_row: opts?.finalPaymentBillRatesPerRow,
+          final_payment_actual_rates_per_row:
+            opts?.finalPaymentActualRatesPerRow,
+          final_payment_refunded_rate: opts?.finalPaymentRefundedRate,
           invoice_date: opts?.invoiceDate,
         });
         setState((s) => ({ ...s, preview: res, loading: false }));
@@ -177,6 +200,13 @@ export function useInvoice() {
           exchange_rate: opts?.exchangeRate,
           exchange_rate_bill: opts?.exchangeRateBill,
           exchange_rate_final: opts?.exchangeRateFinal,
+          exchange_rates_per_row: opts?.exchangeRatesPerRow,
+          final_payment_bill_rates_per_row: opts?.finalPaymentBillRatesPerRow,
+          final_payment_actual_rates_per_row:
+            opts?.finalPaymentActualRatesPerRow,
+          final_payment_refunded_rate: opts?.finalPaymentRefundedRate,
+          show_installment: opts?.showInstallment,
+          installment: opts?.installment,
         });
         setState((s) => ({ ...s, result: res, loading: false }));
 

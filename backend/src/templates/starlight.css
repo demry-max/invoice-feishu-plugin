@@ -11,7 +11,11 @@
 }
 
 body {
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  /* Latin-first stack — see invoice.css for the rationale (blurry Latin
+     glyphs in WPS came from CJK fonts being listed first). */
+  font-family: 'Liberation Sans', 'Noto Sans', 'Helvetica Neue', Arial,
+    'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Zen Hei',
+    'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 12px;
   color: #333;
   background: #fff;
@@ -145,7 +149,13 @@ body {
   display: block;
   font-size: 9px;
   font-weight: 400;
-  opacity: 0.9;
+  /*
+   * Use an alpha text COLOR rather than the `opacity` property. `opacity < 1`
+   * promotes this element to its own compositing layer, which the browser
+   * rasterizes to a bitmap and then renders pixelated at some zoom levels /
+   * device-pixel-ratios. An rgba color keeps the glyphs vector-crisp.
+   */
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .invoice-table td {
@@ -280,4 +290,108 @@ body {
   .totals-table .grand-total .value {
     color: #B8860B !important;
   }
+}
+
+/* === 2026-05-18 typography polish (Starlight) === */
+
+.invoice-table td.text-right,
+.totals-table td.value,
+.totals-table td.label {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.invoice-table,
+.invoice-table th,
+.invoice-table td {
+  border-color: #E5E7EB;
+}
+.invoice-table th {
+  border-bottom: 1.5px solid #D4A017;
+}
+.invoice-table tbody tr + tr td {
+  border-top: 1px solid #F3F4F6;
+}
+
+.totals-section {
+  position: relative;
+  margin-top: 24px;
+  padding-top: 14px;
+}
+.totals-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 2px;
+  width: 240px;
+  background: #D4A017;
+}
+
+.totals-table tr.grand-total td.value {
+  font-size: 18pt;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.totals-table tr.grand-total td.label {
+  font-size: 13pt;
+  font-weight: 600;
+}
+
+.generated-by {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  text-align: center;
+  font-size: 9pt;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+}
+
+/* Installment payment block (per spec req 4) */
+.installment-block {
+  margin: 14px 0 4px 0;
+  padding: 12px 14px;
+  background: #FEF3F2;
+  border-left: 3px solid #B91C1C;
+  font-size: 9pt;
+  line-height: 1.55;
+  color: #1F2937;
+  page-break-inside: avoid;
+}
+.installment-block .installment-zh {
+  margin-bottom: 6px;
+}
+.installment-block .installment-en {
+  color: #4B5563;
+}
+
+/* QR + DRAFT watermark shared */
+.qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 18px auto 8px auto;
+  page-break-inside: avoid;
+}
+.qr-block img { width: 80px; height: 80px; display: block; }
+.qr-block .qr-label {
+  margin-top: 6px;
+  font-size: 8pt;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+}
+
+.draft-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 120pt;
+  color: rgba(192, 57, 43, 0.08);
+  font-weight: 800;
+  letter-spacing: 6px;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
 }

@@ -11,7 +11,17 @@
 }
 
 body {
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  /*
+   * Latin-first font stack. The container only ships Liberation Sans (a
+   * crisp, well-hinted Arial-metric Latin face) + Noto Sans CJK / WenQuanYi
+   * for Chinese. Listing CJK fonts first (the old order) made Chromium pull
+   * LATIN glyphs from the CJK face too, which rendered fuzzy/blurry in WPS.
+   * Putting Liberation Sans / Noto Sans first means Latin glyphs come from a
+   * proper Latin font, and Chinese glyphs fall through to the CJK faces.
+   */
+  font-family: 'Liberation Sans', 'Noto Sans', 'Helvetica Neue', Arial,
+    'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Zen Hei',
+    'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 12px;
   color: #333;
   background: #fff;
@@ -145,7 +155,13 @@ body {
   display: block;
   font-size: 9px;
   font-weight: 400;
-  opacity: 0.9;
+  /*
+   * Use an alpha text COLOR rather than the `opacity` property. `opacity < 1`
+   * promotes this element to its own compositing layer, which the browser
+   * rasterizes to a bitmap and then renders pixelated at some zoom levels /
+   * device-pixel-ratios. An rgba color keeps the glyphs vector-crisp.
+   */
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .invoice-table td {
@@ -273,4 +289,117 @@ body {
   .totals-table .grand-total .value {
     color: #c0392b !important;
   }
+}
+
+/* === 2026-05-18 typography polish (Feilong) === */
+
+/* Tabular numerals on every amount cell — columns align cleanly */
+.invoice-table td.text-right,
+.totals-table td.value,
+.totals-table td.label {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Hairline borders on items table (less heavy than default) */
+.invoice-table,
+.invoice-table th,
+.invoice-table td {
+  border-color: #E5E7EB;
+}
+.invoice-table th {
+  border-bottom: 1.5px solid #c0392b;
+}
+.invoice-table tbody tr + tr td {
+  border-top: 1px solid #F3F4F6;
+}
+
+/* Accent bar above totals block, brand-aligned */
+.totals-section {
+  position: relative;
+  margin-top: 24px;
+  padding-top: 14px;
+}
+.totals-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 2px;
+  width: 240px;
+  background: #c0392b;
+}
+
+/* Emphasized Grand Total */
+.totals-table tr.grand-total td.value {
+  font-size: 18pt;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.totals-table tr.grand-total td.label {
+  font-size: 13pt;
+  font-weight: 600;
+}
+
+/* Page-foot identity line */
+.generated-by {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  text-align: center;
+  font-size: 9pt;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+}
+
+/* Installment payment block (per spec req 4) */
+.installment-block {
+  margin: 14px 0 4px 0;
+  padding: 12px 14px;
+  background: #FFF9E6;
+  border-left: 3px solid #D97706;
+  font-size: 9pt;
+  line-height: 1.55;
+  color: #1F2937;
+  page-break-inside: avoid;
+}
+.installment-block .installment-zh {
+  margin-bottom: 6px;
+}
+.installment-block .installment-en {
+  color: #4B5563;
+}
+
+/* QR + DRAFT watermark (shared) */
+.qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 18px auto 8px auto;
+  page-break-inside: avoid;
+}
+.qr-block img { width: 80px; height: 80px; display: block; }
+.qr-block .qr-label {
+  margin-top: 6px;
+  font-size: 8pt;
+  color: #9CA3AF;
+  letter-spacing: 0.3px;
+}
+
+.draft-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 120pt;
+  color: rgba(192, 57, 43, 0.08);
+  font-weight: 800;
+  letter-spacing: 6px;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+
+.invoice-page {
+  position: relative;
 }

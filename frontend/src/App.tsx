@@ -10,6 +10,7 @@ import type {
   ExchangeRateRow,
 } from "./types";
 import { useInvoice, subscribeSelectionChange } from "./hooks/useInvoice";
+import { usePersistentState } from "./hooks/usePersistentState";
 import { CompanyInfoSection } from "./components/CompanyInfoSection";
 import { BillToSection } from "./components/BillToSection";
 import { ItemsTable } from "./components/ItemsTable";
@@ -17,6 +18,7 @@ import { TotalsSummary } from "./components/TotalsSummary";
 import { ResultSection } from "./components/ResultSection";
 import { TemplateSelector } from "./components/TemplateSelector";
 import { BankAccountSelector } from "./components/BankAccountSelector";
+import { InstallmentSection } from "./components/InstallmentSection";
 import "./App.css";
 
 const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
@@ -40,8 +42,8 @@ const COMPANY_CONFIGS: Record<BrandTemplateId, CompanyConfig> = {
 };
 
 const VAT_OPTIONS: VatRatePercent[] = [1, 3, 6, 12];
-const EWT_OPTIONS: EwtRatePercent[] = [2, 10, 15];
-const CURRENCY_OPTIONS: DisplayCurrency[] = ["CNY", "USD", "PHP"];
+const EWT_OPTIONS: EwtRatePercent[] = [0, 2, 10, 15];
+const CURRENCY_OPTIONS: DisplayCurrency[] = ["CNY", "USD", "PHP", "THB"];
 
 /**
  * Look up an exchange rate for (from → to) effective on or before `date`.
@@ -108,8 +110,9 @@ const App: React.FC = () => {
     clearResult,
   } = useInvoice();
   const [dupDismissed, setDupDismissed] = useState(false);
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(true);
   const [billToExpanded, setBillToExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(
     COMPANY_CONFIGS.feilong,
@@ -121,17 +124,49 @@ const App: React.FC = () => {
   );
   // Currency symbol is now derived — see `currency` useMemo below.
   const [showCompanyEdit, setShowCompanyEdit] = useState(false);
-  const [templateId, setTemplateId] = useState<BrandTemplateId>("feilong");
-  const [bankAccountId, setBankAccountId] = useState("");
 
-  // New: invoice type + tax rate + display currency
-  const [invoiceType, setInvoiceType] = useState<InvoiceType>("consultant");
-  const [vatRatePercent, setVatRatePercent] = useState<VatRatePercent>(6);
-  const [ewtRatePercent, setEwtRatePercent] = useState<EwtRatePercent>(2);
-  const [taxMode, setTaxMode] = useState<TaxMode>("tax_included");
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency | "">(
+  // Settings persisted per browser so users don't re-pick every session.
+  const [templateId, setTemplateId] = usePersistentState<BrandTemplateId>(
+    "templateId",
+    "feilong",
+  );
+  const [bankAccountId, setBankAccountId] = usePersistentState<string>(
+    "bankAccountId",
     "",
   );
+  const [invoiceType, setInvoiceType] = usePersistentState<InvoiceType>(
+    "invoiceType",
+    "consultant",
+  );
+  const [vatRatePercent, setVatRatePercent] = usePersistentState<VatRatePercent>(
+    "vatRatePercent",
+    6,
+  );
+  const [ewtRatePercent, setEwtRatePercent] = usePersistentState<EwtRatePercent>(
+    "ewtRatePercent",
+    2,
+  );
+  const [taxMode, setTaxMode] = usePersistentState<TaxMode>(
+    "taxMode",
+    "tax_included",
+  );
+  const [displayCurrency, setDisplayCurrency] = usePersistentState<
+    DisplayCurrency | ""
+  >("displayCurrency", "");
+  // Per spec req 4 — installment block. Toggle is persisted; the editable
+  // overrides are session-only (reset on selection change so the formula
+  // values can refresh from the current preview).
+  const [showInstallment, setShowInstallment] = usePersistentState<boolean>(
+    "showInstallment",
+    false,
+  );
+  const [installmentOverrides, setInstallmentOverrides] = useState<{
+    first_payment_ratio?: number;
+    final_payment_ratio?: number;
+    first_payment_amount?: number;
+    final_payment_amount?: number;
+    final_payment_business_days?: number;
+  }>({});
 
   // Source currencies from main record (first item)
   const billCurrency = useMemo(
@@ -158,6 +193,51 @@ const App: React.FC = () => {
     return findExchangeRate(exchangeRates, finalCurrency, displayCurrency, invoiceDate);
   }, [invoiceType, displayCurrency, finalCurrency, invoiceDate, exchangeRates]);
 
+  // Consultant per-row exchange rates (per spec req 3 — every Service Name
+  // may have its own Currency on 任务明细表). Returns 1 for rows where no
+  // conversion is needed or no rate row matches the invoice date window.
+  const consultantRowRates = useMemo<number[]>(() => {
+    if (invoiceType !== "consultant" || !displayCurrency) {
+      return sourceItems.map(() => 1);
+    }
+    return sourceItems.map((s) => {
+      const rowCurrency = (s.service_currency || s.source_currency || "")
+        .trim()
+        .toUpperCase();
+      if (!rowCurrency || rowCurrency === displayCurrency) return 1;
+      return findExchangeRate(
+        exchangeRates,
+        rowCurrency,
+        displayCurrency,
+        invoiceDate,
+      );
+    });
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  // Rows that needed a conversion but the table yielded 1 (no matching window).
+  const missingConsultantRowRates = useMemo<string[]>(() => {
+    if (invoiceType !== "consultant" || !displayCurrency) return [];
+    const missing: string[] = [];
+    sourceItems.forEach((s, idx) => {
+      const rowCurrency = (s.service_currency || s.source_currency || "")
+        .trim()
+        .toUpperCase();
+      if (
+        rowCurrency &&
+        rowCurrency !== displayCurrency &&
+        consultantRowRates[idx] === 1
+      ) {
+        missing.push(`${s.service || `#${idx + 1}`} (${rowCurrency})`);
+      }
+    });
+    return missing;
+  }, [
+    invoiceType,
+    displayCurrency,
+    sourceItems,
+    consultantRowRates,
+  ]);
+
   // True when a rate was needed but the table yielded 1 (no matching row).
   const missingBillRate =
     invoiceType === "final_payment" &&
@@ -172,10 +252,117 @@ const App: React.FC = () => {
     finalCurrency !== displayCurrency &&
     rateFinal === 1;
 
+  // Final-payment per-row conversion (per spec req 1.2). Three independent
+  // source currencies may each differ per Service Name:
+  //   - row Currency          → Amount Billed + Amount Paid  (fpBillRates)
+  //   - row Final bill currency → Actual Amount Incurred      (fpActualRates)
+  //   - ticket Refunded Currency → Amount Refunded            (fpRefundedRate)
+  // Each falls back to the main-table currency, then to rate = 1.
+  const rateFor = (from: string): number => {
+    const f = (from || "").trim().toUpperCase();
+    if (!f || !displayCurrency || f === displayCurrency) return 1;
+    return findExchangeRate(exchangeRates, f, displayCurrency, invoiceDate);
+  };
+
+  const fpBillRates = useMemo<number[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) {
+      return sourceItems.map(() => 1);
+    }
+    return sourceItems.map((s) =>
+      rateFor(s.service_currency || s.source_currency || ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  const fpActualRates = useMemo<number[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) {
+      return sourceItems.map(() => 1);
+    }
+    return sourceItems.map((s) =>
+      rateFor(s.service_final_currency || s.final_currency || ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  const fpRefundedRate = useMemo<number>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return 1;
+    const refundCurrency =
+      sourceItems.find((s) => (s.refunded_currency || "").trim())
+        ?.refunded_currency ||
+      sourceItems[0]?.source_currency ||
+      "";
+    return rateFor(refundCurrency);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceType, displayCurrency, sourceItems, invoiceDate, exchangeRates]);
+
+  // Rows whose conversion was needed but the table yielded 1 (missing rate).
+  const missingFinalPaymentRates = useMemo<string[]>(() => {
+    if (invoiceType !== "final_payment" || !displayCurrency) return [];
+    const missing: string[] = [];
+    const check = (from: string | undefined, rate: number, label: string) => {
+      const f = (from || "").trim().toUpperCase();
+      if (f && f !== displayCurrency && rate === 1) missing.push(label);
+    };
+    sourceItems.forEach((s, idx) => {
+      const tag = s.service || `#${idx + 1}`;
+      check(
+        s.service_currency || s.source_currency,
+        fpBillRates[idx],
+        `${tag} (${(s.service_currency || s.source_currency || "").toUpperCase()})`,
+      );
+      check(
+        s.service_final_currency || s.final_currency,
+        fpActualRates[idx],
+        `${tag} Final (${(s.service_final_currency || s.final_currency || "").toUpperCase()})`,
+      );
+    });
+    const refundCurrency =
+      sourceItems.find((s) => (s.refunded_currency || "").trim())
+        ?.refunded_currency ||
+      sourceItems[0]?.source_currency;
+    check(refundCurrency, fpRefundedRate, `Refunded (${(refundCurrency || "").toUpperCase()})`);
+    return Array.from(new Set(missing));
+  }, [
+    invoiceType,
+    displayCurrency,
+    sourceItems,
+    fpBillRates,
+    fpActualRates,
+    fpRefundedRate,
+  ]);
+
   useEffect(() => {
     const newConfig = COMPANY_CONFIGS[templateId] ?? COMPANY_CONFIGS.feilong;
     setCompanyConfig(newConfig);
   }, [templateId]);
+
+  // Both invoice types now hide the "原始/Original" option and require an
+  // explicit Display Currency (per spec — consultant req 3, final-payment
+  // req 1.1). Auto-default so a currency is always selected:
+  //   - consultant   → CNY (per-row source currencies vary; CNY is the house default)
+  //   - final_payment→ the source Bill/Final currency when known (rate = 1,
+  //                     i.e. no conversion), else CNY. We wait for sourceItems
+  //                     so we don't lock in CNY before the real currency loads.
+  useEffect(() => {
+    if (displayCurrency) return;
+    if (invoiceType === "consultant") {
+      setDisplayCurrency("CNY");
+      return;
+    }
+    if (invoiceType === "final_payment") {
+      if (sourceItems.length === 0) return; // wait until source currency is known
+      const src = (billCurrency || finalCurrency || "").toUpperCase();
+      const known = (CURRENCY_OPTIONS as readonly string[]).includes(src);
+      setDisplayCurrency(known ? (src as DisplayCurrency) : "CNY");
+    }
+  }, [
+    invoiceType,
+    displayCurrency,
+    billCurrency,
+    finalCurrency,
+    sourceItems.length,
+    setDisplayCurrency,
+  ]);
 
   useEffect(() => {
     if (sourceItems.length > 0) {
@@ -189,7 +376,7 @@ const App: React.FC = () => {
   }, [sourceItems]);
 
   // Currency symbol is derived:
-  // - final_payment with chosen display currency → its symbol (¥ / $ / ₱)
+  // - any invoice type with a chosen display currency → its symbol
   // - otherwise → symbol of the source Bill Currency (fallback ¥)
   const currency = useMemo(() => {
     const symbolFor = (code: string): string => {
@@ -200,17 +387,19 @@ const App: React.FC = () => {
           return "$";
         case "PHP":
           return "₱";
+        case "THB":
+          return "฿";
         case "EUR":
           return "€";
         default:
           return "";
       }
     };
-    if (invoiceType === "final_payment" && displayCurrency) {
+    if (displayCurrency) {
       return symbolFor(displayCurrency) || "¥";
     }
     return symbolFor(billCurrency) || "¥";
-  }, [invoiceType, displayCurrency, billCurrency]);
+  }, [displayCurrency, billCurrency]);
 
   // Auto-load on mount + on selection change in Bitable
   useEffect(() => {
@@ -222,9 +411,14 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset the dup-dismiss each time we load a new row
+  // Reset dup-dismiss + clear stale result each time we load a new row
   useEffect(() => {
     setDupDismissed(false);
+    clearResult();
+    // Per spec req 4 — overrides reset when items change so the formula
+    // defaults can refresh from the new preview.
+    setInstallmentOverrides({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceItems]);
 
   // Debounced auto-preview when data or settings change
@@ -251,6 +445,9 @@ const App: React.FC = () => {
     displayCurrency,
     rateBill,
     rateFinal,
+    fpBillRates,
+    fpActualRates,
+    fpRefundedRate,
     templateId,
     bankAccountId,
     billTo,
@@ -258,29 +455,64 @@ const App: React.FC = () => {
     currency,
     invoiceDate,
     taxMode,
+    showInstallment,
+    installmentOverrides,
   ]);
 
   const previewOpts = {
     invoiceType,
     vatRatePercent: invoiceType === "consultant" ? vatRatePercent : undefined,
     ewtRatePercent: invoiceType === "consultant" ? ewtRatePercent : undefined,
-    displayCurrency:
-      invoiceType === "final_payment" && displayCurrency
-        ? displayCurrency
-        : undefined,
+    // Display Currency now applies to BOTH invoice types (per spec req 3).
+    displayCurrency: displayCurrency || undefined,
+    // Legacy single rates kept as a fallback for the backend (per-row arrays
+    // below take precedence when present).
     exchangeRateBill: invoiceType === "final_payment" ? rateBill : undefined,
     exchangeRateFinal: invoiceType === "final_payment" ? rateFinal : undefined,
+    // Per-row consultant rates (per spec req 3 — each Service Name converts independently).
+    exchangeRatesPerRow:
+      invoiceType === "consultant" && displayCurrency
+        ? consultantRowRates
+        : undefined,
+    // Per-row final-payment rates (per spec req 1.2).
+    finalPaymentBillRatesPerRow:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpBillRates
+        : undefined,
+    finalPaymentActualRatesPerRow:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpActualRates
+        : undefined,
+    finalPaymentRefundedRate:
+      invoiceType === "final_payment" && displayCurrency
+        ? fpRefundedRate
+        : undefined,
+    // Per spec req 4 — installment block (consultant only).
+    showInstallment: invoiceType === "consultant" && showInstallment,
+    installment:
+      invoiceType === "consultant" && showInstallment
+        ? installmentOverrides
+        : undefined,
     invoiceDate,
   };
 
   const handleGenerate = () => {
-    if (!billTo.trim()) {
-      alert("请填写 Bill To");
+    // Both invoice types only need ONE of Bill To / Company Name
+    // (consultant req 1 + final-payment: Bill To is now non-required).
+    const billToOk = billTo.trim().length > 0;
+    const companyOk = companyName.trim().length > 0;
+    if (!billToOk && !companyOk) {
+      alert(
+        "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name",
+      );
       return;
     }
     doGenerate(
       billTo,
-      companyName || companyConfig.name,
+      // Per spec req 1.3: do NOT fall back to the hard-coded company name
+      // ("Feilong Business Service (Shenzhen) Co., Ltd") when Company Name
+      // is blank — pass an empty string so the template renders only Bill To.
+      companyName,
       companyConfig,
       invoiceDate,
       currency,
@@ -296,7 +528,11 @@ const App: React.FC = () => {
     const onKey = (e: KeyboardEvent): void => {
       const cmdOrCtrl = e.metaKey || e.ctrlKey;
       if (cmdOrCtrl && e.key === "Enter") {
-        if (loading || !preview || !sourceItems.length || !billTo.trim()) return;
+        if (loading || !preview || !sourceItems.length) return;
+        // Mirror handleGenerate: both types need Bill To OR Company Name.
+        const billToOk = billTo.trim().length > 0;
+        const companyOk = companyName.trim().length > 0;
+        if (!billToOk && !companyOk) return;
         e.preventDefault();
         handleGenerate();
       }
@@ -304,7 +540,7 @@ const App: React.FC = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, preview, sourceItems.length, billTo]);
+  }, [loading, preview, sourceItems.length, billTo, companyName, invoiceType]);
 
   // The invoice number that will actually be used if the user generates now —
   // either the previously-saved one for this WO (reuse) or "new".
@@ -315,13 +551,56 @@ const App: React.FC = () => {
   }, [existingInvoices, invoiceType]);
 
   // Compact summary string for the collapsed Settings card.
+  // Real-time validation — surfaced inline so user fixes before generating.
+  const warnings = useMemo(() => {
+    const out: string[] = [];
+    if (sourceItems.length === 0) return out;
+
+    if (invoiceType === "consultant" && taxMode === "tax_included") {
+      // Per 2026-06-16 spec, CNY/THB tax ALL rows regardless of Taxation
+      // Identification — so the "no YES rows" warning only applies to the
+      // currencies that still filter by YES (USD / PHP).
+      const filtersByYes = displayCurrency === "USD" || displayCurrency === "PHP";
+      const anyEligible = sourceItems.some((s) => s.tax_eligible);
+      if (filtersByYes && !anyEligible) {
+        out.push(
+          "所有服务行的 Taxation Identification 都不为 YES — VAT 与 EWT 将为 0",
+        );
+      }
+    }
+
+    if (invoiceType === "final_payment") {
+      const allZero = sourceItems.every(
+        (s) => (s.actual_amount_incurred ?? 0) === 0,
+      );
+      if (allZero) {
+        out.push(
+          "尚未填写任何 Actual Amount Incurred — 尾款账单需要先在任务明细表填写实际发生金额 / No Actual Amount Incurred entered — Final-Payment invoices require filling in the actual amount in the task detail table first",
+        );
+      }
+    }
+    return out;
+  }, [sourceItems, invoiceType, taxMode, displayCurrency]);
+
+  const blockingError = useMemo(() => {
+    if (sourceItems.length === 0) return null;
+    // Both invoice types accept EITHER Bill To OR Company Name.
+    const billToOk = billTo.trim().length > 0;
+    const companyOk = companyName.trim().length > 0;
+    if (!billToOk && !companyOk) {
+      return "请填写 Bill To 或 Company Name / Please fill in Bill To or Company Name";
+    }
+    return null;
+  }, [sourceItems.length, billTo, companyName]);
+
   const settingsSummary = useMemo(() => {
     const parts: string[] = [
       templateId === "feilong" ? "菲龙咨询" : "Starlight",
     ];
     if (invoiceType === "consultant") {
-      parts.push(taxMode === "tax_included" ? `含税 ${vatRatePercent}%` : "不含税");
-      if (taxMode === "tax_included" && templateId === "starlight") {
+      parts.push(taxMode === "tax_included" ? `含税 / Tax Included ${vatRatePercent}%` : "不含税 / Tax Excluded");
+      // EWT chip shown for both consultant templates (per 2026-06-05 spec).
+      if (taxMode === "tax_included") {
         parts.push(`EWT ${ewtRatePercent}%`);
       }
     } else {
@@ -359,9 +638,9 @@ const App: React.FC = () => {
             className="btn-link"
             onClick={loadSourceItems}
             disabled={loading}
-            aria-label="刷新选中记录"
+            aria-label="刷新选中记录 / Refresh selected record"
           >
-            {loading ? "⟳" : "⟳ 刷新"}
+            {loading ? "⟳" : "⟳ 刷新 / Refresh"}
           </button>
         </div>
 
@@ -372,13 +651,13 @@ const App: React.FC = () => {
                 className={`seg-btn ${invoiceType === "consultant" ? "seg-active" : ""}`}
                 onClick={() => setInvoiceType("consultant")}
               >
-                顾问
+                顾问 / Consultant
               </button>
               <button
                 className={`seg-btn ${invoiceType === "final_payment" ? "seg-active" : ""}`}
                 onClick={() => setInvoiceType("final_payment")}
               >
-                尾款
+                尾款 / Final Payment
               </button>
             </div>
             {reuseInvoiceNo && (
@@ -401,6 +680,52 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
+
+        {existingInvoices.length > 0 && (
+          <details
+            className="history-panel"
+            open={historyOpen}
+            onToggle={(e) =>
+              setHistoryOpen((e.target as HTMLDetailsElement).open)
+            }
+          >
+            <summary>
+              📚 该工单历史账单 ({existingInvoices.length})
+            </summary>
+            <ul className="history-list">
+              {existingInvoices.map((inv) => (
+                <li key={inv.invoice_no}>
+                  <span className="history-no">{inv.invoice_no}</span>
+                  <span className="history-type">
+                    {inv.invoice_type === "final_payment" ? "尾款 / Final" : "顾问 / Consultant"}
+                  </span>
+                  <span className="history-date">{inv.invoice_date}</span>
+                  <span className="history-amt">
+                    {inv.currency}
+                    {inv.grand_total.toFixed(2)}
+                  </span>
+                  {inv.pdf_url && (
+                    <a
+                      href={inv.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-link"
+                    >
+                      PDF
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {blockingError && (
+          <div className="status-error">⛔ {blockingError}</div>
+        )}
+        {warnings.map((w) => (
+          <div key={w} className="status-warn">⚠️ {w}</div>
+        ))}
       </div>
 
       {sourceItems.length > 0 && (
@@ -414,7 +739,7 @@ const App: React.FC = () => {
                 className="btn-link"
                 onClick={() => setBillToExpanded(!billToExpanded)}
               >
-                {billToExpanded ? "收起" : "编辑"}
+                {billToExpanded ? "收起 / Collapse" : "编辑 / Edit"}
               </button>
             </div>
             {!billToExpanded ? (
@@ -434,6 +759,12 @@ const App: React.FC = () => {
             )}
           </div>
 
+          {/* === Brand template — always visible (high-impact choice) === */}
+          <div className="section">
+            <h3 className="section-title">品牌模板 / Brand Template</h3>
+            <TemplateSelector value={templateId} onChange={setTemplateId} />
+          </div>
+
           {/* === Collapsible Settings === */}
           <div className="section">
             <div className="section-header">
@@ -442,7 +773,7 @@ const App: React.FC = () => {
                 className="btn-link"
                 onClick={() => setSettingsExpanded(!settingsExpanded)}
               >
-                {settingsExpanded ? "收起" : "展开"}
+                {settingsExpanded ? "收起 / Collapse" : "展开 / Expand"}
               </button>
             </div>
             {!settingsExpanded && (
@@ -455,20 +786,6 @@ const App: React.FC = () => {
                 gap: "12px",
               }}
             >
-              <div>
-                <label
-                  style={{
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "4px",
-                    display: "block",
-                  }}
-                >
-                  品牌模板 / Brand Template
-                </label>
-                <TemplateSelector value={templateId} onChange={setTemplateId} />
-              </div>
-
               {invoiceType === "consultant" && (
                 <>
                   <div>
@@ -487,13 +804,13 @@ const App: React.FC = () => {
                         className={`btn ${taxMode === "tax_excluded" ? "btn-primary" : "btn-secondary"}`}
                         onClick={() => setTaxMode("tax_excluded")}
                       >
-                        不含税
+                        不含税 / Tax Excluded
                       </button>
                       <button
                         className={`btn ${taxMode === "tax_included" ? "btn-primary" : "btn-secondary"}`}
                         onClick={() => setTaxMode("tax_included")}
                       >
-                        含税
+                        含税 / Tax Included
                       </button>
                     </div>
                   </div>
@@ -522,101 +839,136 @@ const App: React.FC = () => {
                           ))}
                         </div>
                       </div>
-                      {templateId === "starlight" && (
-                        <div>
-                          <label
-                            style={{
-                              fontSize: "12px",
-                              color: "#666",
-                              marginBottom: "4px",
-                              display: "block",
-                            }}
-                          >
-                            预扣税比例 / EWT Rate
-                          </label>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            {EWT_OPTIONS.map((v) => (
-                              <button
-                                key={v}
-                                className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
-                                onClick={() => setEwtRatePercent(v)}
-                              >
-                                {v}%
-                              </button>
-                            ))}
-                          </div>
+                      {/*
+                        EWT Rate selector — shown for BOTH consultant brand
+                        templates (菲龙咨询/Feilong + Starlight) per the
+                        2026-06-05 spec. Choosing 0% hides the Less:EWT row on
+                        the invoice (handled by the template's ewt_rate > 0
+                        gate).
+                      */}
+                      <div>
+                        <label
+                          style={{
+                            fontSize: "12px",
+                            color: "#666",
+                            marginBottom: "4px",
+                            display: "block",
+                          }}
+                        >
+                          预扣税比例 / EWT Rate
+                        </label>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {EWT_OPTIONS.map((v) => (
+                            <button
+                              key={v}
+                              className={`btn ${ewtRatePercent === v ? "btn-primary" : "btn-secondary"}`}
+                              onClick={() => setEwtRatePercent(v)}
+                            >
+                              {v}%
+                            </button>
+                          ))}
                         </div>
-                      )}
+                      </div>
                     </>
                   )}
                 </>
               )}
 
-              {invoiceType === "final_payment" && (
-                <div>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      color: "#666",
-                      marginBottom: "4px",
-                      display: "block",
-                    }}
-                  >
-                    展示币种 / Display Currency
-                    {(billCurrency || finalCurrency) && (
-                      <span style={{ marginLeft: 8, color: "#999" }}>
-                        (Bill: {billCurrency || "—"} · Final: {finalCurrency || "—"})
-                      </span>
-                    )}
-                  </label>
-                  <div style={{ display: "flex", gap: "6px" }}>
+              {/*
+                Display Currency selector.
+                Final-payment: two-rate model (Bill Currency, Final Currency)
+                  shown as hints.
+                Consultant: per-row conversion using each Service Name's own
+                  source currency (per spec req 3).
+              */}
+              <div>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#666",
+                    marginBottom: "4px",
+                    display: "block",
+                  }}
+                >
+                  展示币种 / Display Currency
+                  {invoiceType === "final_payment" && (billCurrency || finalCurrency) && (
+                    <span style={{ marginLeft: 8, color: "#999" }}>
+                      (Bill: {billCurrency || "—"} · Final: {finalCurrency || "—"})
+                    </span>
+                  )}
+                </label>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {/*
+                    The "原始 / Original" option is hidden for BOTH invoice
+                    types (consultant req 3 + final-payment req 1.1). Users
+                    must pick an explicit Display Currency so per-row FX
+                    conversion applies; selecting the same currency as the
+                    source yields rate = 1 (no conversion).
+                  */}
+                  {CURRENCY_OPTIONS.map((c) => (
                     <button
-                      className={`btn ${displayCurrency === "" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setDisplayCurrency("")}
+                      key={c}
+                      className={`btn ${displayCurrency === c ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setDisplayCurrency(c)}
                     >
-                      原始 / Original
+                      {c}
                     </button>
-                    {CURRENCY_OPTIONS.map((c) => (
-                      <button
-                        key={c}
-                        className={`btn ${displayCurrency === c ? "btn-primary" : "btn-secondary"}`}
-                        onClick={() => setDisplayCurrency(c)}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                  {displayCurrency && (
-                    <div style={{ fontSize: "12px", color: "#666", marginTop: 6 }}>
-                      {billCurrency && billCurrency !== displayCurrency && (
-                        <div>
-                          Bill rate: 1 {billCurrency} = {rateBill.toFixed(6)}{" "}
-                          {displayCurrency}{" "}
-                          {missingBillRate && (
-                            <span style={{ color: "#b85c00" }}>
-                              (汇率表中无 {billCurrency}→{displayCurrency} 行)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {finalCurrency && finalCurrency !== displayCurrency && (
-                        <div>
-                          Final rate: 1 {finalCurrency} = {rateFinal.toFixed(6)}{" "}
-                          {displayCurrency}{" "}
-                          {missingFinalRate && (
-                            <span style={{ color: "#b85c00" }}>
-                              (汇率表中无 {finalCurrency}→{displayCurrency} 行)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {billCurrency === displayCurrency &&
-                        finalCurrency === displayCurrency && (
-                          <div>源币种与展示币种一致，无需换算</div>
+                  ))}
+                </div>
+                {displayCurrency && invoiceType === "final_payment" && (
+                  <div style={{ fontSize: "12px", color: "#666", marginTop: 6 }}>
+                    {billCurrency && billCurrency !== displayCurrency && (
+                      <div>
+                        Bill rate: 1 {billCurrency} = {rateBill.toFixed(6)}{" "}
+                        {displayCurrency}{" "}
+                        {missingBillRate && (
+                          <span style={{ color: "#b85c00" }}>
+                            (汇率表中无 {billCurrency}→{displayCurrency} 行)
+                          </span>
                         )}
+                      </div>
+                    )}
+                    {finalCurrency && finalCurrency !== displayCurrency && (
+                      <div>
+                        Final rate: 1 {finalCurrency} = {rateFinal.toFixed(6)}{" "}
+                        {displayCurrency}{" "}
+                        {missingFinalRate && (
+                          <span style={{ color: "#b85c00" }}>
+                            (汇率表中无 {finalCurrency}→{displayCurrency} 行)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {billCurrency === displayCurrency &&
+                      finalCurrency === displayCurrency && (
+                        <div>源币种与展示币种一致，无需换算 / Source currency matches display currency, no conversion needed</div>
+                      )}
+                    {missingFinalPaymentRates.length > 0 && (
+                      <div style={{ color: "#b85c00", marginTop: 4 }}>
+                        汇率表中找不到以下换算汇率 / Missing exchange rate rows
+                        for: {missingFinalPaymentRates.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {displayCurrency && invoiceType === "consultant" &&
+                  missingConsultantRowRates.length > 0 && (
+                    <div style={{ fontSize: "12px", color: "#b85c00", marginTop: 6 }}>
+                      汇率表中找不到以下服务行的换算汇率 / Missing exchange rate
+                      rows for: {missingConsultantRowRates.join(", ")}
                     </div>
                   )}
-                </div>
+              </div>
+
+              {invoiceType === "consultant" && (
+                <InstallmentSection
+                  showInstallment={showInstallment}
+                  onShowInstallmentChange={setShowInstallment}
+                  defaults={preview?.installment_info}
+                  overrides={installmentOverrides}
+                  onOverridesChange={setInstallmentOverrides}
+                  currency={currency}
+                />
               )}
 
               <div>
@@ -678,16 +1030,8 @@ const App: React.FC = () => {
 
       <ResultSection result={result} />
 
-      {result && (
-        <div className="actions">
-          <button className="btn btn-secondary" onClick={clearResult}>
-            生成新账单 / Create New Invoice
-          </button>
-        </div>
-      )}
-
       {/* === Sticky bottom action bar — always-visible Grand Total + Generate === */}
-      {sourceItems.length > 0 && !result && (
+      {sourceItems.length > 0 && (
         <div className="sticky-bottom">
           <div className="sticky-bottom-total">
             <span className="sticky-bottom-label">Grand Total</span>
@@ -700,14 +1044,14 @@ const App: React.FC = () => {
           <button
             className="btn btn-danger sticky-bottom-cta"
             onClick={handleGenerate}
-            disabled={loading || !preview}
-            title="⌘+Enter"
+            disabled={loading || !preview || !!blockingError}
+            title={blockingError ?? "⌘+Enter"}
           >
             {loading
-              ? "生成中..."
+              ? "生成中... / Generating..."
               : reuseInvoiceNo
-                ? `覆盖生成 ${reuseInvoiceNo}`
-                : "生成正式账单"}
+                ? `覆盖生成 / Overwrite ${reuseInvoiceNo}`
+                : "生成正式账单 / Generate Invoice"}
           </button>
         </div>
       )}

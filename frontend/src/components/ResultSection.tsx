@@ -5,7 +5,7 @@ interface Props {
   result: GenerateResponse | null;
 }
 
-async function fetchAndDownload(url: string, filename: string) {
+async function fetchAndDownload(url: string, filename: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
@@ -19,21 +19,19 @@ async function fetchAndDownload(url: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
 }
 
-async function fetchAndOpen(url: string) {
+async function fetchAndOpen(url: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
   const objUrl = URL.createObjectURL(blob);
-  // Open the blob URL in a new tab. Most browsers allow this from a click.
   window.open(objUrl, "_blank");
   setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
 }
 
-async function copyToClipboard(text: string) {
+async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    // Fallback
     const ta = document.createElement("textarea");
     ta.value = text;
     document.body.appendChild(ta);
@@ -43,6 +41,39 @@ async function copyToClipboard(text: string) {
   }
 }
 
+/**
+ * Strip characters that are illegal in file names across Windows / macOS /
+ * Linux ( \ / : * ? " < > | ) plus ASCII control chars, and collapse
+ * whitespace. CJK characters are preserved (valid in modern file systems).
+ */
+function sanitizeFilenamePart(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|]/g, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Build the download filename for a generated invoice (per consultant spec):
+ *   - consultant + company name present → `{invoiceNo}_{companyName}`
+ *   - consultant + company name empty   → `{invoiceNo}_{billTo}`
+ *   - final_payment / no name           → `{invoiceNo}`
+ * `ext` is appended (e.g. "pdf", "docx").
+ */
+function buildInvoiceFilename(result: GenerateResponse, ext: string): string {
+  const invoiceNo = result.invoice_no;
+  const inv = result.invoice;
+  if (inv && inv.invoice_type !== "final_payment") {
+    const company = sanitizeFilenamePart(inv.company_name ?? "");
+    const billTo = sanitizeFilenamePart(inv.bill_to ?? "");
+    const namePart = company || billTo;
+    if (namePart) return `${invoiceNo}_${namePart}.${ext}`;
+  }
+  return `${invoiceNo}.${ext}`;
+}
+
 export const ResultSection: React.FC<Props> = ({ result }) => {
   const [status, setStatus] = useState<string>("");
 
@@ -50,132 +81,87 @@ export const ResultSection: React.FC<Props> = ({ result }) => {
 
   const invoiceNo = result.invoice_no;
 
-  const handleOpenHtml = async () => {
+  const handleOpenHtml = async (): Promise<void> => {
     if (!result.html_url) return;
-    setStatus("打开 HTML 中…");
+    setStatus("打开 HTML 中… / Opening HTML…");
     try {
       await fetchAndOpen(result.html_url);
       setStatus("");
     } catch (err) {
-      setStatus(`打开失败: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(
+        `打开失败 / Open failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = async (): Promise<void> => {
     if (!result.pdf_url) return;
-    setStatus("下载 PDF 中…");
+    setStatus("下载 PDF 中… / Downloading PDF…");
     try {
-      await fetchAndDownload(result.pdf_url, `${invoiceNo}.pdf`);
+      await fetchAndDownload(result.pdf_url, buildInvoiceFilename(result, "pdf"));
       setStatus("");
     } catch (err) {
-      setStatus(`下载失败: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(
+        `下载失败 / Download failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
-  const handleCopy = async (url: string) => {
+  const handleCopy = async (url: string): Promise<void> => {
     await copyToClipboard(url);
-    setStatus("已复制到剪贴板");
+    setStatus("已复制到剪贴板 / Copied to clipboard");
     setTimeout(() => setStatus(""), 2000);
   };
 
-  const linkStyle: React.CSSProperties = {
-    color: "#1890ff",
-    textDecoration: "underline",
-    cursor: "pointer",
-    background: "none",
-    border: "none",
-    padding: 0,
-    font: "inherit",
-  };
-
-  const smallBtnStyle: React.CSSProperties = {
-    marginLeft: 8,
-    fontSize: 12,
-    padding: "2px 8px",
-    border: "1px solid #d9d9d9",
-    borderRadius: 4,
-    background: "#fff",
-    cursor: "pointer",
+  const handleDownloadWord = async (): Promise<void> => {
+    if (!result.word_url) return;
+    setStatus("下载 Word 中… / Downloading Word…");
+    try {
+      await fetchAndDownload(
+        result.word_url,
+        buildInvoiceFilename(result, "docx"),
+      );
+      setStatus("");
+    } catch (err) {
+      setStatus(
+        `下载失败 / Download failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   };
 
   return (
-    <div
-      className="section result-section"
-      style={{
-        border: "2px solid #52c41a",
-        background: "#f6ffed",
-        padding: "16px",
-        marginTop: "16px",
-        borderRadius: "8px",
-      }}
-    >
-      <h3 className="section-title success-title" style={{ color: "#52c41a" }}>
-        ✅ 账单生成成功
-      </h3>
-      <div className="result-grid">
-        <div className="result-item" style={{ marginBottom: "8px" }}>
-          <span className="result-label">账单编号: </span>
-          <span className="result-value" style={{ fontWeight: "bold" }}>
-            {invoiceNo}
-          </span>
+    <div className="result-card">
+      <div className="result-card-head">
+        <div className="result-card-title">
+          ✓ 账单已生成 / Invoice Generated · {invoiceNo}
         </div>
+        {status && <div className="result-card-status">{status}</div>}
+      </div>
 
-        {result.html_url ? (
-          <div className="result-item" style={{ marginBottom: "8px" }}>
-            <button style={linkStyle} onClick={handleOpenHtml}>
-              📄 查看 HTML 账单
-            </button>
-            <button
-              style={smallBtnStyle}
-              onClick={() => handleCopy(result.html_url!)}
-            >
-              复制链接
-            </button>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#999",
-                marginTop: "4px",
-                wordBreak: "break-all",
-              }}
-            >
-              {result.html_url}
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: "#ff4d4f" }}>⚠️ html_url 为空</div>
+      <div className="result-card-actions">
+        <button className="btn btn-primary" onClick={handleDownloadPdf}>
+          📥 下载 PDF / Download PDF
+        </button>
+        <button className="btn btn-secondary" onClick={handleOpenHtml}>
+          📄 打开 HTML / Open HTML
+        </button>
+        {result.word_url && (
+          <button
+            className="btn btn-secondary"
+            onClick={handleDownloadWord}
+            title={result.word_url}
+          >
+            📝 下载 Word / Download Word
+          </button>
         )}
-
-        {result.pdf_url ? (
-          <div className="result-item" style={{ marginBottom: "8px" }}>
-            <button style={linkStyle} onClick={handleDownloadPdf}>
-              📥 下载 PDF 账单
-            </button>
-            <button
-              style={smallBtnStyle}
-              onClick={() => handleCopy(result.pdf_url!)}
-            >
-              复制链接
-            </button>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#999",
-                marginTop: "4px",
-                wordBreak: "break-all",
-              }}
-            >
-              {result.pdf_url}
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: "#ff4d4f" }}>⚠️ pdf_url 为空</div>
-        )}
-
-        {status && (
-          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-            {status}
-          </div>
+        {result.pdf_url && (
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleCopy(result.pdf_url!)}
+            title={result.pdf_url}
+          >
+            复制 PDF 链接 / Copy PDF Link
+          </button>
         )}
       </div>
     </div>

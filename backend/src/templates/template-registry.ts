@@ -1,12 +1,25 @@
 import fs from "fs";
 import path from "path";
+import QRCode from "qrcode";
 import type {
   Invoice,
   CompanyConfig,
   BankAccount,
   BrandTemplateId,
-  TaxMode,
 } from "../types";
+
+/** Render the invoice's html_url as a base64 PNG QR data URI (~128x128). */
+async function renderQrDataUri(url: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(url, {
+      width: 128,
+      margin: 0,
+      color: { dark: "#222222", light: "#ffffff" },
+    });
+  } catch {
+    return "";
+  }
+}
 
 // ============================================================
 // CSS cache
@@ -78,34 +91,79 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** CNY 货币符号 (U+00A5) — 顾问账单不含税备注按币种区分加税费率时使用 */
+const CNY_SYMBOL = "¥";
+
 /**
- * Notes 文本根据含税模式动态生成
- * 用户选择"不含税"→ tax_included → 不含税 note
- * 用户选择"含税 (+VAT)"→ tax_excluded → 含税 note
+ * Notes 文本根据含税模式与币种动态生成
+ * 含税 (tax_included)  → 上述报价含税, 可开具增值税专用发票
+ * 不含税 (tax_excluded) → 加税开票附加费按币种区分: 人民币 6%, 其他币种 12%
  */
-function getTaxNote(taxMode: TaxMode): string {
-  // 2026-05-18 spec (账单调整需求 §1):
-  //   不含税 (tax_excluded) → 6% surcharge note
-  //   含税   (tax_included) → 上述报价含税, 可开具增值税专用发票
-  if (taxMode === "tax_included") {
+function getTaxNote(invoice: Invoice): string {
+  // Per spec req 5 (顾问/Consultant 账单备注):
+  //   含税   (tax_included)                            → 上述报价含税, 可开具增值税专用发票
+  //   不含税 (tax_excluded) + Display Currency = CNY  → 加收 6% 费用
+  //   不含税 (tax_excluded) + Display Currency ≠ CNY  → 加收 12% 费用
+  //
+  // When Display Currency is not explicitly chosen ("原始 / Original"),
+  // fall back to the rendered currency symbol so the rule still applies
+  // (¥ → 6%; anything else → 12%).
+  if (invoice.tax_mode === "tax_included") {
     return "上述报价含税,可开具增值税专用发票。";
   }
-  return "上述报价不含税;如需开票,可加收6%费用开具增值税普通发票或专用发票。";
+  const isCny = invoice.display_currency
+    ? invoice.display_currency.toUpperCase() === "CNY"
+    : invoice.currency === CNY_SYMBOL;
+  const surchargePercent = isCny ? 6 : 12;
+  return `上述报价不含税;如需开票,可加收${surchargePercent}%费用开具增值税普通发票或专用发票。`;
 }
 
 function formatAmount(n: number, currency: string = "¥"): string {
   return `${currency}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * Format a fraction in [0, 1] as a percent string. 0.5 → "50%". Uses up to
+ * 2 decimals; trailing zeros stripped.
+ */
+function formatRatioPercent(fraction: number): string {
+  const pct = fraction * 100;
+  const rounded = Math.round(pct * 100) / 100;
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toString()}%`;
+}
+
+/**
+ * Render the optional installment-payment block shown below Grand Total
+ * for consultant invoices (per spec req 4). Returns "" when the invoice
+ * has no installment_info attached.
+ */
+function buildInstallmentHtml(invoice: Invoice): string {
+  const info = invoice.installment_info;
+  if (!info) return "";
+  const c = invoice.currency || "¥";
+  const firstPct = formatRatioPercent(info.first_payment_ratio);
+  const finalPct = formatRatioPercent(info.final_payment_ratio);
+  const firstAmt = formatAmount(info.first_payment_amount, c);
+  const finalAmt = formatAmount(info.final_payment_amount, c);
+  const days = info.final_payment_business_days;
+  const zhText = `分期付款： 首款：服务费的${firstPct}，即金额${firstAmt}，于服务启动之前支付； 尾款：服务费的${finalPct}，即金额${finalAmt}，于服务完成之后的${days}个工作日内支付。`;
+  const enText = `Installment Payment: First payment: ${firstPct} of the service fee, i.e., ${firstAmt}, payable before the service commences. Final payment: ${finalPct} of the service fee, i.e., ${finalAmt}, payable within ${days} business days after the service is completed.`;
+  return `
+    <div class="installment-block">
+      <div class="installment-zh">${escapeHtml(zhText)}</div>
+      <div class="installment-en">${escapeHtml(enText)}</div>
+    </div>`;
+}
+
 // ============================================================
 // Main render function
 // ============================================================
-export function renderByTemplate(
+export async function renderByTemplate(
   templateId: BrandTemplateId,
   invoice: Invoice,
   config: CompanyConfig,
   bankAccount: BankAccount,
-): string {
+): Promise<string> {
   if (invoice.invoice_type === "final_payment") {
     return renderFinalPaymentHtml(templateId, invoice, config, bankAccount);
   }
@@ -146,6 +204,18 @@ export function renderByTemplate(
   // Bank info section
   const bankHtml = buildBankHtml(bankAccount);
 
+  // QR code intentionally omitted for consultant invoices (per spec req 6):
+  // a stale QR scanned by a client could expose a regenerated amount on a
+  // later version of the same invoice no, which is misleading. Final-payment
+  // invoices keep the QR (see renderFinalPaymentHtml).
+  const qrDataUri = "";
+
+  const brandLabel =
+    templateId === "starlight"
+      ? "Starlight Business Consulting"
+      : "Feilong Business Service";
+  const isDraft = invoice.status === "draft";
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -156,6 +226,7 @@ export function renderByTemplate(
 </head>
 <body>
   <div class="invoice-page">
+    ${isDraft ? `<div class="draft-watermark">DRAFT</div>` : ""}
     <!-- Header: Company Info + Logo -->
     <div class="invoice-header">
       <div class="company-info">
@@ -218,11 +289,22 @@ export function renderByTemplate(
     <!-- Totals -->
     ${totalsHtml}
 
+    <!-- Installment payment block (per spec req 4 — consultant only, when opted in) -->
+    ${buildInstallmentHtml(invoice)}
+
     <!-- Footer -->
     <div class="invoice-footer">
       <div class="notes-label">Notes:</div>
-      <div class="tax-note">${escapeHtml(getTaxNote(invoice.tax_mode))}</div>
+      <div class="tax-note">${escapeHtml(getTaxNote(invoice))}</div>
       ${bankHtml}
+    </div>
+    ${
+      qrDataUri
+        ? `<div class="qr-block"><img src="${qrDataUri}" alt="QR" /><div class="qr-label">Scan to view online</div></div>`
+        : ""
+    }
+    <div class="generated-by">
+      Generated by ${escapeHtml(brandLabel)} · ${escapeHtml(invoice.invoice_no)} · ${escapeHtml(invoice.invoice_date)}
     </div>
   </div>
 </body>
@@ -396,12 +478,12 @@ function buildBankHtml(bank: BankAccount): string {
 // Final-payment (尾款账单) template — distinct layout per spec:
 //   最终账单插件需求.docx §三.
 // ============================================================
-function renderFinalPaymentHtml(
+async function renderFinalPaymentHtml(
   templateId: BrandTemplateId,
   invoice: Invoice,
   config: CompanyConfig,
   bankAccount: BankAccount,
-): string {
+): Promise<string> {
   const theme = THEMES[templateId] ?? THEMES.feilong;
   const css = getCss(theme.cssFile);
   const logoDataUri = getLogo(theme.logoFile);
@@ -453,6 +535,14 @@ function renderFinalPaymentHtml(
 
   const clientName = invoice.client_name ?? invoice.bill_to;
   const clientCompany = invoice.client_company ?? invoice.company_name;
+  const qrDataUri = invoice.html_url
+    ? await renderQrDataUri(invoice.html_url)
+    : "";
+  const brandLabel =
+    templateId === "starlight"
+      ? "Starlight Business Consulting"
+      : "Feilong Business Service";
+  const isDraft = invoice.status === "draft";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -464,6 +554,7 @@ function renderFinalPaymentHtml(
 </head>
 <body>
   <div class="invoice-page">
+    ${isDraft ? `<div class="draft-watermark">DRAFT</div>` : ""}
     <div class="invoice-header">
       <div class="company-info">
         <div class="company-name">${escapeHtml(config.name)}</div>
@@ -483,8 +574,12 @@ function renderFinalPaymentHtml(
 
     <div class="invoice-meta" style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div class="bill-to">
-        <div><strong>Client Name:</strong> ${escapeHtml(clientName)}</div>
-        <div><strong>Client Company:</strong> ${escapeHtml(clientCompany)}</div>
+        ${clientName && clientName.trim()
+          ? `<div><strong>Client Name:</strong> ${escapeHtml(clientName)}</div>`
+          : ""}
+        ${clientCompany && clientCompany.trim()
+          ? `<div><strong>Client Company:</strong> ${escapeHtml(clientCompany)}</div>`
+          : ""}
       </div>
       <div class="invoice-badges">
         <div class="badge">
@@ -532,6 +627,14 @@ function renderFinalPaymentHtml(
 
     <div class="invoice-footer">
       ${buildBankHtml(bankAccount)}
+    </div>
+    ${
+      qrDataUri
+        ? `<div class="qr-block"><img src="${qrDataUri}" alt="QR" /><div class="qr-label">Scan to view online</div></div>`
+        : ""
+    }
+    <div class="generated-by">
+      Generated by ${escapeHtml(brandLabel)} · ${escapeHtml(invoice.invoice_no)} · ${escapeHtml(invoice.invoice_date)}
     </div>
   </div>
 </body>
