@@ -557,8 +557,12 @@ const App: React.FC = () => {
     if (sourceItems.length === 0) return out;
 
     if (invoiceType === "consultant" && taxMode === "tax_included") {
+      // Per 2026-06-16 spec, CNY/THB tax ALL rows regardless of Taxation
+      // Identification — so the "no YES rows" warning only applies to the
+      // currencies that still filter by YES (USD / PHP).
+      const filtersByYes = displayCurrency === "USD" || displayCurrency === "PHP";
       const anyEligible = sourceItems.some((s) => s.tax_eligible);
-      if (!anyEligible) {
+      if (filtersByYes && !anyEligible) {
         out.push(
           "所有服务行的 Taxation Identification 都不为 YES — VAT 与 EWT 将为 0",
         );
@@ -576,7 +580,7 @@ const App: React.FC = () => {
       }
     }
     return out;
-  }, [sourceItems, invoiceType, taxMode]);
+  }, [sourceItems, invoiceType, taxMode, displayCurrency]);
 
   const blockingError = useMemo(() => {
     if (sourceItems.length === 0) return null;

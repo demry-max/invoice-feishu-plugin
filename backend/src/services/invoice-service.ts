@@ -150,6 +150,28 @@ function resolveConsultantEwtRate(
   return templateId === "starlight" ? EWT_RATE : 0;
 }
 
+/**
+ * Resolve the consultant taxable subtotal (税前小计) used for VAT and EWT.
+ *
+ * 2026-06-16 spec: the rows that participate depend on the Display Currency:
+ *   - CNY or THB  → ALL service rows are taxable (税前小计 = Σ line_total),
+ *                   regardless of each row's Taxation Identification.
+ *   - USD or PHP  → only rows with Taxation Identification = YES
+ *                   (tax_eligible) participate — the original behavior.
+ *   - anything else / unset → fall back to the YES-only behavior.
+ *
+ * `subtotal` is Σ line_total over all items (already computed by the caller).
+ */
+function resolveConsultantTaxableSubtotal(
+  items: Parameters<typeof calcTaxableSubtotal>[0],
+  subtotal: number,
+  displayCurrency: string | undefined,
+): number {
+  const dc = (displayCurrency ?? "").trim().toUpperCase();
+  if (dc === "CNY" || dc === "THB") return subtotal;
+  return calcTaxableSubtotal(items);
+}
+
 function pickCurrencySymbol(
   _invoiceType: InvoiceType,
   displayCurrency: string | undefined,
@@ -360,7 +382,11 @@ export function previewInvoice(req: PreviewRequest): PreviewResponse {
     templateId,
     req.ewt_rate_percent,
   );
-  const taxableSubtotal = calcTaxableSubtotal(items);
+  const taxableSubtotal = resolveConsultantTaxableSubtotal(
+    items,
+    subtotal,
+    req.display_currency,
+  );
   const vatAmount = calcVat(taxableSubtotal, vatRate);
   const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
   const grandTotal = calcConsultantGrandTotal(subtotal, vatAmount, ewtAmount);
@@ -492,7 +518,11 @@ export async function generateInvoice(
       templateId,
       req.ewt_rate_percent,
     );
-    const taxableSubtotal = calcTaxableSubtotal(items);
+    const taxableSubtotal = resolveConsultantTaxableSubtotal(
+      items,
+      subtotal,
+      req.display_currency,
+    );
     const vatAmount = calcVat(taxableSubtotal, vatRate);
     const ewtAmount = calcEwt(taxableSubtotal, ewtRate);
     const grandTotal = calcConsultantGrandTotal(subtotal, vatAmount, ewtAmount);
